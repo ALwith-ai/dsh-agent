@@ -6,7 +6,9 @@
 
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { credentialKey } from "@deepseek-ai/dsh-credentials"
 import { composeRuntime } from "./compose.ts"
+import { defaultCredentialsFile } from "./oauth.ts"
 import { loadPluginOverrides } from "./plugins.ts"
 import { defaultPluginsFile, runPluginsCli } from "./plugins-cli.ts"
 import * as Bridge from "./bridge.ts"
@@ -78,7 +80,25 @@ async function startServer(): Promise<void> {
     preset: rawPreset as (typeof PRESETS)[number],
     overrides,
     piProviders,
+    // The credential plane rides with the pi-ai seat: subscription grants and
+    // their refreshes live in the harness credential file, not in this process.
+    credentialsFile: piProviders === undefined ? undefined : defaultCredentialsFile(),
   })
+  // A route with no apiKeyEnv authenticates through a stored subscription
+  // grant. Check it here, where the credential plane is the single source of
+  // truth, so a session never boots into a first request that must fail —
+  // the host cannot read the harness credential file and should not try.
+  for (const [route, config] of Object.entries(piProviders ?? {})) {
+    const declared = config as { apiKeyEnv?: unknown }
+    if (declared.apiKeyEnv !== undefined) continue
+    const record = await ctx.credentials.describeRecord(credentialKey("llm-pi-ai", route))
+    if (!record.configured) {
+      throw new Error(
+        `provider route "${route}" declares no API key and has no stored subscription credential: `
+        + "add an API key (Settings → Model providers) or sign in with a subscription (Settings → Harness)",
+      )
+    }
+  }
   await ctx.plugin(
     { name: Bridge.name, inject: [...Bridge.inject], apply: (inner: typeof ctx) => Bridge.apply(inner, { provider, model, providerId, titleModel }) },
   )

@@ -38,6 +38,8 @@ export interface ComposeOptions {
   overrides?: PluginOverrides
   /** Extra pi-ai provider routes (see ResolvedComposeOptions.piProviders). */
   piProviders?: Record<string, unknown>
+  /** The harness credential file (see ResolvedComposeOptions.credentialsFile). */
+  credentialsFile?: string
 }
 
 export async function composeRuntime(options: ComposeOptions = {}): Promise<Context> {
@@ -47,6 +49,7 @@ export async function composeRuntime(options: ComposeOptions = {}): Promise<Cont
     permissionMode: options.permissionMode ?? "workspace-write",
     preset: options.preset ?? "standard",
     piProviders: options.piProviders,
+    credentialsFile: options.credentialsFile,
   })
   const { mounted } = resolvePlugins(rows, options.overrides ?? {})
   const ctx = new Context()

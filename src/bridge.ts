@@ -392,7 +392,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
    */
   const replayHistory = (record: SessionRecord): void => {
     const sessionId = record.agent.session.id
-    for (const event of record.agent.session.events) {
+    for (const event of record.agent.session.snapshotEvents()) {
       if (event.type === "user/message") {
         const message = event.data
         for (const block of message.content) {

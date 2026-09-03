@@ -16,7 +16,7 @@ import {
   type RequestPermissionResponse,
   type Stream,
 } from "@agentclientprotocol/sdk/experimental/v2"
-import { CallId, LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from "@deepseek-ai/dsh-llm"
+import { ToolCallId, LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from "@deepseek-ai/dsh-llm"
 import { composeRuntime } from "../src/compose.ts"
 import * as Bridge from "../src/bridge.ts"
 import { textResponse, untilFrame, type CapturedUpdate } from "./harness.ts"
@@ -44,7 +44,7 @@ class MockAdapter extends LlmAdapter {
 }
 
 function toolCallResponse(rawCallId: string, name: string, args: object): StreamChunk[] {
-  const callId = CallId(rawCallId)
+  const callId = ToolCallId(rawCallId)
   const argumentsJson = JSON.stringify(args)
   return [
     { type: "block-start", index: 0, blockType: "tool-call" },

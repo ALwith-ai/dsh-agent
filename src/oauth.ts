@@ -1,130 +1,84 @@
 /**
- * Subscription OAuth for the pi-ai seat.
+ * Subscription OAuth for the pi-ai seat, on the harness's own credential plane.
  *
- * pi-ai ships the flows (anthropic = Claude Pro/Max, openai-codex, …) and
- * refreshes stored OAuth credentials inside `Models.getAuth()` under the
- * store lock; what it does not own is persistence and login orchestration —
- * both app-owned by contract. This module provides:
+ * Since dsh 0.1.2 the pi-ai adapter ships the whole sign-in translation:
+ * `dsh-llm-pi-ai` registers one `ctx.authorization` flow per catalog provider
+ * that offers a login, and persists what pi-ai's `Models.login()` produces
+ * (and later refreshes under its own lock) as `llm-pi-ai/<provider>` records in
+ * `ctx.credentials`. This module only composes that plane and drives it:
  *
- * - a file-backed CredentialStore (`ALWITH_DSH_OAUTH_CREDENTIALS`, default
- *   `~/.alwith-dsh/credentials.json`, mode 0600, per-provider serialized
- *   writes) injected into the patched adapter (see patches/),
- * - the `oauth login/status/logout` CLI. `login` emits interaction events as
- *   JSON lines on stdout (`{"type":"url",…}` → the host opens the browser);
- *   the flow's local callback server completes the exchange.
+ * - `dsh-credentials-local` at `ALWITH_DSH_OAUTH_CREDENTIALS` (default
+ *   `~/.alwith-dsh/.credentials.yaml`; the file is private to the OS user),
+ * - `dsh-authorization` — the flow registry the adapter registers into,
+ * - the `oauth login/status/logout` CLI. `login` emits the flow's notices as
+ *   JSON lines on stdout (`{"type":"auth_url",…}` → the host opens the
+ *   browser); the provider's local callback server completes the exchange.
  */
 
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os"
-import { dirname, join } from "node:path"
-import type { AuthInteraction, Credential, CredentialInfo, CredentialStore, OAuthAuth } from "@earendil-works/pi-ai"
+import { join } from "node:path"
+import { Context } from "@deepseek-ai/cordis"
+import AuthorizationService, {
+  type AuthorizationInteraction,
+  type AuthorizationNotice,
+  type AuthorizationPrompt,
+} from "@deepseek-ai/dsh-authorization"
+import { credentialKey, credentialKeyId, credentialKeyScope } from "@deepseek-ai/dsh-credentials"
+import LocalCredentialProvider from "@deepseek-ai/dsh-credentials-local"
+import LlmRuntime from "@deepseek-ai/dsh-llm"
+// Namespace import: a module-plugin default export drops `inject` (dsh postmortem 0001).
+import * as LlmPiAi from "@deepseek-ai/dsh-llm-pi-ai"
+
+/** The record scope the pi-ai adapter writes under (its registered plugin name). */
+const PI_AI_RECORD_SCOPE = "llm-pi-ai"
 
 export function defaultCredentialsFile(): string {
-  return process.env.ALWITH_DSH_OAUTH_CREDENTIALS ?? join(homedir(), ".alwith-dsh", "credentials.json")
-}
-
-/** Providers with a wired subscription login. Extending = one line per flow. */
-const OAUTH_PROVIDERS: Record<string, () => Promise<OAuthAuth>> = {
-  anthropic: async () => {
-    const { anthropicProvider } = await import("@earendil-works/pi-ai/providers/anthropic")
-    const oauth = anthropicProvider().auth.oauth
-    if (!oauth) throw new Error("pi-ai anthropic provider no longer declares an OAuth flow")
-    return oauth
-  }
-}
-
-export const OAUTH_PROVIDER_IDS = Object.keys(OAUTH_PROVIDERS)
-
-/**
- * File-backed pi-ai CredentialStore: one JSON object keyed by provider id,
- * mode 0600. Writes are serialized per provider through a promise chain
- * (`modify` is the only write path — pi-ai refreshes tokens inside it).
- */
-export class FileCredentialStore implements CredentialStore {
-  private readonly chains = new Map<string, Promise<unknown>>()
-
-  constructor(private readonly file: string) {}
-
-  private load(): Record<string, Credential> {
-    if (!existsSync(this.file)) return {}
-    return JSON.parse(readFileSync(this.file, "utf8")) as Record<string, Credential>
-  }
-
-  private save(all: Record<string, Credential>): void {
-    mkdirSync(dirname(this.file), { recursive: true })
-    writeFileSync(this.file, `${JSON.stringify(all, null, 2)}\n`)
-    chmodSync(this.file, 0o600)
-  }
-
-  private enqueue<T>(providerId: string, task: () => Promise<T>): Promise<T> {
-    const previous = this.chains.get(providerId) ?? Promise.resolve()
-    const next = previous.then(task, task)
-    this.chains.set(providerId, next)
-    return next
-  }
-
-  read(providerId: string): Promise<Credential | undefined> {
-    return Promise.resolve(this.load()[providerId])
-  }
-
-  list(): Promise<readonly CredentialInfo[]> {
-    return Promise.resolve(
-      Object.entries(this.load()).map(([providerId, credential]) => ({ providerId, type: credential.type }))
-    )
-  }
-
-  modify(
-    providerId: string,
-    fn: (current: Credential | undefined) => Promise<Credential | undefined>
-  ): Promise<Credential | undefined> {
-    return this.enqueue(providerId, async () => {
-      const all = this.load()
-      const next = await fn(all[providerId])
-      if (next !== undefined) {
-        all[providerId] = next
-        this.save(all)
-      }
-      return all[providerId]
-    })
-  }
-
-  delete(providerId: string): Promise<void> {
-    return this.enqueue(providerId, async () => {
-      const all = this.load()
-      if (providerId in all) {
-        delete all[providerId]
-        this.save(all)
-      }
-    })
-  }
+  return process.env.ALWITH_DSH_OAUTH_CREDENTIALS ?? join(homedir(), ".alwith-dsh", ".credentials.yaml")
 }
 
 function emit(event: Record<string, unknown>): void {
   process.stdout.write(`${JSON.stringify(event)}\n`)
 }
 
-async function flowOf(providerId: string): Promise<OAuthAuth> {
-  const load = OAUTH_PROVIDERS[providerId]
-  if (!load) {
-    throw new Error(`no subscription login wired for "${providerId}" (available: ${OAUTH_PROVIDER_IDS.join(", ")})`)
-  }
-  return load()
+/**
+ * The minimal composition that owns subscription credentials: the store, the
+ * flow registry, and the adapter that registers the flows. No session, no
+ * sandbox, no tools — signing in is not a conversation. `watch` is off: this
+ * process is the only writer for its lifetime and must exit when done.
+ */
+export async function composeCredentialPlane(credentialsFile: string): Promise<Context> {
+  const ctx = new Context()
+  await ctx.plugin(LocalCredentialProvider, { path: credentialsFile, watch: false } as never)
+  await ctx.plugin(AuthorizationService)
+  await ctx.plugin(LlmRuntime)
+  await ctx.plugin(LlmPiAi, { providers: {} } as never)
+  return ctx
 }
 
 /**
- * Interaction callbacks for a host-driven login. Events pass through verbatim
- * as JSON lines (auth_url / info / progress / device_code) — the host opens
- * auth_url. A prompt carrying `signal` is an alternative input path raced
- * against the flow's callback server (e.g. anthropic's paste-the-redirect-URL
- * `manual_code`); answering is optional, so it stays pending until pi-ai
- * aborts it after login settles (the rejection lands in the flow's own
- * `.catch`). A signal-less prompt is required input this non-interactive host
- * cannot supply — fail loud rather than hang.
+ * Interaction callbacks for a host-driven login, in the seam's neutral
+ * vocabulary. Notices pass through as JSON lines: one carrying a page becomes
+ * `auth_url` (the host opens it), one carrying a code becomes `device_code`,
+ * the rest `info`. A prompt carrying `signal` is an alternative input path
+ * raced against the flow's callback server (anthropic's paste-the-redirect-URL
+ * question); answering is optional, so it stays pending until the flow aborts
+ * it after login settles. A signal-less prompt is required input this
+ * non-interactive host cannot supply — fail loud rather than hang. (A plain
+ * rejection, not `AuthorizationDeclinedError`: "no" would settle the attempt
+ * as cancelled and hide the fact that the host cannot answer.)
  */
-export function hostLoginInteraction(): AuthInteraction {
+export function hostLoginInteraction(): AuthorizationInteraction {
   return {
-    notify: event => emit({ ...event }),
-    prompt: prompt =>
+    notify: (notice: AuthorizationNotice) => {
+      if (notice.url !== undefined && notice.code !== undefined) {
+        emit({ type: "device_code", verificationUri: notice.url, userCode: notice.code, message: notice.message })
+      } else if (notice.url !== undefined) {
+        emit({ type: "auth_url", url: notice.url, instructions: notice.message })
+      } else {
+        emit({ type: "info", message: notice.message })
+      }
+    },
+    prompt: (prompt: AuthorizationPrompt) =>
       new Promise<string>((_resolve, reject) => {
         if (!prompt.signal) {
           reject(new Error(`interactive prompt not supported in host login flow: ${JSON.stringify(prompt)}`))
@@ -132,35 +86,53 @@ export function hostLoginInteraction(): AuthInteraction {
         }
         prompt.signal.addEventListener(
           "abort",
-          () => reject(new Error(`prompt "${prompt.type}" cancelled: login settled out of band`)),
+          () => reject(new Error(`prompt "${prompt.kind}" cancelled: login settled out of band`)),
           { once: true }
         )
-      })
+      }),
   }
 }
 
 /** `oauth login <provider>` / `oauth status` / `oauth logout <provider>`; stdout is JSON lines. */
 export async function runOauthCli(argv: string[]): Promise<void> {
   const [command, providerId] = argv
-  const store = new FileCredentialStore(defaultCredentialsFile())
-
-  if (command === "status") {
-    emit({ type: "status", credentials: await store.list() })
-    return
+  const ctx = await composeCredentialPlane(defaultCredentialsFile())
+  try {
+    if (command === "status") {
+      const stored = await ctx.credentials.listRecords()
+      const credentials = stored
+        .filter((entry) => credentialKeyScope(entry.key) === PI_AI_RECORD_SCOPE)
+        .map((entry) => ({ providerId: credentialKeyId(entry.key), type: entry.kind === "api-key" ? "api_key" : "oauth" }))
+      emit({ type: "status", credentials })
+      return
+    }
+    if (command === "logout") {
+      if (!providerId) throw new Error("usage: oauth logout <provider>")
+      await ctx.credentials.deleteRecord(credentialKey(PI_AI_RECORD_SCOPE, providerId))
+      emit({ type: "logged-out", providerId })
+      return
+    }
+    if (command === "login") {
+      if (!providerId) throw new Error("usage: oauth login <provider>")
+      const key = credentialKey(PI_AI_RECORD_SCOPE, providerId)
+      const flow = ctx.authorization.describe(key)
+      if (flow === undefined) {
+        const available = ctx.authorization
+          .list()
+          .filter((entry) => credentialKeyScope(entry.key) === PI_AI_RECORD_SCOPE)
+          .map((entry) => credentialKeyId(entry.key))
+        throw new Error(`no subscription login wired for "${providerId}" (available: ${available.join(", ")})`)
+      }
+      if (!flow.methods.some((method) => method.id === "oauth")) {
+        throw new Error(`"${providerId}" offers no OAuth login (methods: ${flow.methods.map((m) => m.id).join(", ")})`)
+      }
+      const outcome = await ctx.authorization.begin({ key, method: "oauth", interaction: hostLoginInteraction() })
+      if (outcome.status !== "authorized") throw new Error(`subscription login for "${providerId}" was cancelled`)
+      emit({ type: "logged-in", providerId })
+      return
+    }
+    throw new Error(`unknown oauth command "${command ?? ""}": expected login, status or logout`)
+  } finally {
+    await ctx.fiber.dispose()
   }
-  if (command === "logout") {
-    if (!providerId) throw new Error("usage: oauth logout <provider>")
-    await store.delete(providerId)
-    emit({ type: "logged-out", providerId })
-    return
-  }
-  if (command === "login") {
-    if (!providerId) throw new Error("usage: oauth login <provider>")
-    const flow = await flowOf(providerId)
-    const credential = await flow.login(hostLoginInteraction())
-    await store.modify(providerId, async () => credential)
-    emit({ type: "logged-in", providerId })
-    return
-  }
-  throw new Error(`unknown oauth command "${command ?? ""}": expected login, status or logout`)
 }

@@ -11,6 +11,7 @@ import {
 } from "@agentclientprotocol/sdk/experimental/v2"
 import { LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from "@deepseek-ai/dsh-llm"
 import AgentLoop from "@deepseek-ai/dsh-agent-loop"
+import SessionProjectionRegistry from "@deepseek-ai/dsh-session-projection"
 import JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl"
 import { mountAgentLoopTestDependencies } from "@deepseek-ai/dsh-agent-loop-testkit"
 import * as Bridge from "../src/bridge.ts"
@@ -79,6 +80,8 @@ export async function makeHarness(script: ScriptEntry[], options: HarnessOptions
   const adapter = new MockAdapter(script)
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx, { systemPrompt: { persona: "" } })
+  // agent-loop injects sessionProjections since 0.1.2; the testkit does not mount it
+  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   if (options.sessionsRoot !== undefined) {
     await ctx.plugin(JsonlSessionPersistence, { root: options.sessionsRoot })

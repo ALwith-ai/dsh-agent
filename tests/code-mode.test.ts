@@ -14,13 +14,13 @@ import {
   type ClientConnection,
   type Stream,
 } from "@agentclientprotocol/sdk/experimental/v2"
-import { CallId, type StreamChunk } from "@deepseek-ai/dsh-llm"
+import { ToolCallId, type StreamChunk } from "@deepseek-ai/dsh-llm"
 import { composeRuntime } from "../src/compose.ts"
 import * as Bridge from "../src/bridge.ts"
 import { MockAdapter, textResponse, untilFrame, type CapturedUpdate } from "./harness.ts"
 
 function runCodeCall(program: string): StreamChunk[] {
-  const callId = CallId("call-1")
+  const callId = ToolCallId("call-1")
   const argumentsJson = JSON.stringify({ code: program, description: "run the computation" })
   return [
     { type: "block-start", index: 0, blockType: "tool-call" },

@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import { Context } from "@deepseek-ai/cordis";
 import LlmRuntime from "@deepseek-ai/dsh-llm";
 import SessionStore from "@deepseek-ai/dsh-session";
+import SessionProjectionRegistry from "@deepseek-ai/dsh-session-projection";
 import SystemPrompt from "@deepseek-ai/dsh-system-prompt";
 import ToolRuntime from "@deepseek-ai/dsh-tools";
 import AgentRegistry from "@deepseek-ai/dsh-agent";
@@ -39,7 +40,8 @@ import ApprovalService from "@deepseek-ai/dsh-user-approval";
 // static and are safe as defaults.
 import * as LlmDeepseek from "@deepseek-ai/dsh-llm-deepseek";
 import * as LlmPiAi from "@deepseek-ai/dsh-llm-pi-ai";
-import { defaultCredentialsFile, FileCredentialStore } from "./oauth.ts";
+import LocalCredentialProvider from "@deepseek-ai/dsh-credentials-local";
+import AuthorizationService from "@deepseek-ai/dsh-authorization";
 import * as ShellEnv from "@deepseek-ai/dsh-shell-env";
 import * as FsObservationPolicy from "@deepseek-ai/dsh-fs-observation-policy";
 import * as ToolFs from "@deepseek-ai/dsh-tool-fs";
@@ -100,11 +102,19 @@ export interface ResolvedComposeOptions {
   preset: HarnessPreset;
   /**
    * Extra pi-ai provider routes (full upstream config shape passed through:
-   * apiKeyEnv / baseURL / api / models / compat / …). Absent or empty means
-   * the multi-provider adapter is not mounted — DeepSeek rides its own
-   * direct-fetch adapter either way.
+   * apiKeyEnv / baseURL / api / models / compat / …). Absent means the
+   * multi-provider adapter is not mounted — DeepSeek rides its own
+   * direct-fetch adapter either way. An empty object mounts the adapter with
+   * no routes: its catalog and sign-in flows exist from the moment it mounts.
    */
   piProviders?: Record<string, unknown>;
+  /**
+   * The harness credential file (`dsh-credentials-local`). Present whenever
+   * the pi-ai adapter is: a route declaring no apiKeyEnv authenticates through
+   * the `llm-pi-ai/<provider>` record a subscription login committed here,
+   * and pi-ai refreshes it in place.
+   */
+  credentialsFile?: string;
 }
 
 export interface PluginRow {
@@ -189,6 +199,15 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "Append-only session event log (model-visible ⟺ recorded)",
       async (ctx, config) => ctx.plugin(SessionStore, config as never),
     ),
+    // Since dsh 0.1.2 the agent loop, sandbox policy and permission presets all
+    // inject the projection registry (per-session derived views); without it
+    // no agent factory ever registers and every session/new fails loud.
+    core(
+      "session-projection",
+      "@deepseek-ai/dsh-session-projection",
+      "Session projection registry (derived per-session views)",
+      async (ctx, config) => ctx.plugin(SessionProjectionRegistry, config as never),
+    ),
     // The anchored preset's phase 1 is persona-only, so the persona must be the
     // exact Minimal one-liner (dsh-persona is an agent-scope shadow and collides
     // process-wide; configuring the prompt runtime directly is the host-plane way).
@@ -210,7 +229,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "@deepseek-ai/dsh-tools",
       "Tool runtime: schema registry, dispatch, presentation mode",
       async (ctx, config) => ctx.plugin(ToolRuntime, config as never),
-      preset === "code" ? { mode: "code" } : undefined,
+      preset === "code" ? { mode: "ptc" } : undefined,
     ),
     core(
       "agent",
@@ -233,29 +252,35 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       async (ctx, config) => ctx.plugin(LlmDeepseek, config as never),
     ),
   ];
-  if (
-    options.piProviders !== undefined &&
-    Object.keys(options.piProviders).length > 0
-  ) {
+  if (options.credentialsFile !== undefined) {
+    // The credential plane the pi-ai adapter signs into and reads from:
+    // records (`llm-pi-ai/<provider>` grants) live in this private file, and
+    // the authorization registry is where the adapter offers its logins.
+    // `watch` stays on in the server: the login CLI is a separate process
+    // writing the same file, and a fresh grant must reach a running session.
+    rows.push(
+      core(
+        "credentials-local",
+        "@deepseek-ai/dsh-credentials-local",
+        "Local credential store (subscription grants, API keys)",
+        async (ctx, config) => ctx.plugin(LocalCredentialProvider, config as never),
+        { path: options.credentialsFile },
+      ),
+      core(
+        "authorization",
+        "@deepseek-ai/dsh-authorization",
+        "Authorization flow registry (provider sign-ins)",
+        async (ctx, config) => ctx.plugin(AuthorizationService, config as never),
+      ),
+    );
+  }
+  if (options.piProviders !== undefined) {
     rows.push(
       core(
         "llm-pi-ai",
         "@deepseek-ai/dsh-llm-pi-ai",
         "Multi-provider adapter (pi-ai catalog: openai / anthropic / google / …)",
-        async (ctx, config) => {
-          // Subscription OAuth: the patched adapter (patches/) threads an
-          // app-owned credential store into pi-ai's Models — a route declaring
-          // no apiKeyEnv then authenticates through stored (auto-refreshed)
-          // OAuth credentials. The setter is our patch's export, hence the cast.
-          (
-            LlmPiAi as unknown as {
-              setCredentialStore: (store: FileCredentialStore) => void;
-            }
-          ).setCredentialStore(
-            new FileCredentialStore(defaultCredentialsFile()),
-          );
-          return ctx.plugin(LlmPiAi, config as never);
-        },
+        async (ctx, config) => ctx.plugin(LlmPiAi, config as never),
         { providers: options.piProviders },
       ),
     );

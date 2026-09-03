@@ -268,7 +268,7 @@ function decidePromotion(state, config) {
 
 /** Scan newly appended session events and update promotion state. */
 function scanEvents(state, session) {
-  const events = session.events
+  const events = session.snapshotEvents()
   for (; state.next < events.length; state.next += 1) {
     const event = events[state.next]
     if (event === undefined) continue
