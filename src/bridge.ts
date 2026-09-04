@@ -34,6 +34,9 @@ import {
   type AgentConnection,
   type AgentContext,
   type CancelSessionNotification,
+  type CloseSessionRequest,
+  type CloseSessionResponse,
+  type CompactionId,
   type InitializeResponse,
   type NewSessionRequest,
   type NewSessionResponse,
@@ -42,6 +45,7 @@ import {
   type ResumeSessionRequest,
   type ResumeSessionResponse,
   type SessionConfigOption,
+  type SetSessionConfigOptionRequest,
   type SetSessionConfigOptionResponse,
   type MessageId,
   type PlanId,
@@ -56,6 +60,8 @@ import { SessionId, type SessionEvent, type TurnEndReason } from "@deepseek-ai/d
 // Side-effect type imports: declaration-merge the approval/request waterfall
 // types and the ctx.sessionPersistence key.
 import type {} from "@deepseek-ai/dsh-user-approval"
+// Event-map augmentation: the compaction/* session events this bridge maps.
+import type {} from "@deepseek-ai/dsh-compaction"
 import type {} from "@deepseek-ai/dsh-session-persistence"
 import type { ContentBlock as DshContentBlock } from "@deepseek-ai/dsh-llm"
 import { acpPromptToText, promptHasUnsupportedContent, turnEndToStopReason } from "./codec.ts"
@@ -194,6 +200,18 @@ export function apply(ctx: Context, config: AcpConfig): void {
     })
   }
 
+  /**
+   * ACP v2: once a prompt is accepted the agent reports where the user message
+   * landed in session history. The dsh message id is the id replay reports
+   * the same message under (`user_message_chunk` keyed by message.id).
+   */
+  const reportUserMessage = (record: SessionRecord, messageId: string, text: string): void => {
+    notify({
+      sessionId: record.agent.session.id,
+      update: { sessionUpdate: "user_message", messageId: MessageId(messageId), content: [{ type: "text", text }] },
+    })
+  }
+
   const reportIdle = (record: SessionRecord, stopReason: StopReason): void => {
     record.lastState = "idle"
     notify({
@@ -317,15 +335,17 @@ export function apply(ctx: Context, config: AcpConfig): void {
     if (llm === undefined || config.provider === undefined) return []
     const models = await llm.listModels(config.provider)
     if (models.length === 0) return []
+    // v2 shape (`configId`, not v1's `id`): the SDK validates outgoing frames since 1.4
+    // and drops an option that does not parse — the host would see no model select.
     return [
       {
-        id: "model",
+        configId: "model",
         name: "Model",
         category: "model",
         type: "select",
         currentValue: record.model,
         options: models.map(model => ({ value: model.id, name: model.name })),
-      } as unknown as SessionConfigOption,
+      },
     ]
   }
 
@@ -509,6 +529,8 @@ export function apply(ctx: Context, config: AcpConfig): void {
             _meta: turnMeta(record),
           },
         })
+      } else if (event.type === "compaction/start" || event.type === "compaction/summary" || event.type === "compaction/end") {
+        for (const update of compactionUpdates(event)) notify({ sessionId: record.agent.session.id, update })
       } else if (event.type === "todo/write") {
         // Whole-list snapshot; v2 item-based plans are replaced per update, so
         // the shapes align one to one.
@@ -646,23 +668,16 @@ export function apply(ctx: Context, config: AcpConfig): void {
       }
       return { configOptions: await modelConfigOptions(acquired) }
     })
-    .onRequest(
-      "session/set_config_option",
-      // Custom parser: ALwith Desktop sends { sessionId, configId, value } without
-      // the schema's `type` discriminant (the alwith-cli dialect); accept both.
-      (params: unknown) => {
-        const body = params as { sessionId?: string; configId?: string; value?: unknown }
-        if (typeof body?.sessionId !== "string" || typeof body.configId !== "string") {
-          throw invalidParams("session/set_config_option requires sessionId and configId")
-        }
-        return { sessionId: body.sessionId, configId: body.configId, value: body.value }
-      },
-      async (context): Promise<SetSessionConfigOptionResponse> => {
+    .onRequest("session/set_config_option", async (context): Promise<SetSessionConfigOptionResponse> => {
         assertOpen()
-        const { sessionId, configId, value } = context.params
+        const params: SetSessionConfigOptionRequest = context.params
+        const { sessionId, configId } = params
         const record = requireSession(sessionId)
         if (configId !== "model") throw invalidParams(`unsupported config option: ${configId}`)
-        if (typeof value !== "string" || value.length === 0) throw invalidParams("model value must be a non-empty string")
+        // The schema keeps an open `{ type: string; value: unknown }` branch for future
+        // value kinds, so the discriminant alone does not narrow `value`.
+        const value = params.type === "id" && typeof params.value === "string" ? params.value : undefined
+        if (value === undefined || value.length === 0) throw invalidParams("model is a select option: send { type: \"id\", value: <model id> }")
         if (record.inflight !== undefined) throw invalidParams("cannot switch model while a prompt is in flight")
         if (record.switching !== undefined) await record.switching
         if (record.model !== value) {
@@ -694,8 +709,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
         const configOptions = await modelConfigOptions(record)
         notify({ sessionId: record.agent.session.id, update: { sessionUpdate: "config_option_update", configOptions } })
         return { configOptions }
-      },
-    )
+      })
     .onRequest("session/prompt", async (context): Promise<PromptResponse> => {
       assertOpen()
       const params: PromptRequest = context.params
@@ -733,6 +747,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
         // alwith-cli's mid-turn steering); completion is still announced by
         // the in-flight turn's idle frame.
         record.agent.followup(message)
+        reportUserMessage(record, message.id, text)
         return {}
       }
       await new Promise<void>((resolve, reject) => {
@@ -746,6 +761,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
         record.inflight = inflight
         try {
           record.agent.followup(message)
+          reportUserMessage(record, message.id, text)
           notifyState(record, "running")
         } catch (error: unknown) {
           record.inflight = undefined
@@ -768,6 +784,18 @@ export function apply(ctx: Context, config: AcpConfig): void {
       })
       // First turn settled: upgrade the deterministic title in the background.
       if (firstPrompt) void refineTitle(record, text)
+      return {}
+    })
+    .onRequest("session/close", async (context): Promise<CloseSessionResponse> => {
+      const params: CloseSessionRequest = context.params
+      const record = requireSession(params.sessionId)
+      // Baseline v2 method: stop foreground work, settle the caller, free the
+      // agent. The record leaves the table first so a racing frame for this
+      // session is dropped rather than reported on a released agent.
+      sessions.delete(SessionId(params.sessionId))
+      record.agent.cancel({ kind: "user" })
+      settlePrompt(record)
+      await record.dispose()
       return {}
     })
     .onNotification("session/cancel", context => {
@@ -821,6 +849,39 @@ export function apply(ctx: Context, config: AcpConfig): void {
     })
 
   ctx.effect(() => quiesce, "alwith-dsh-acp.connection")
+}
+
+/**
+ * dsh compaction lifecycle → ACP v2 (SDK 1.4) compaction frames. `compaction/start`
+ * opens the bracket, each `compaction/summary` text block streams as a summary
+ * chunk, `compaction/end` settles it — `error` present means it failed. The
+ * internal `compaction/prune` bookkeeping has no client-visible counterpart.
+ */
+export function compactionUpdates(event: SessionEvent): UpdateSessionNotification["update"][] {
+  if (event.type === "compaction/start") {
+    return [{ sessionUpdate: "compaction_update", compactionId: CompactionId(event.data.compactionId), status: "in_progress" }]
+  }
+  if (event.type === "compaction/summary") {
+    return event.data.summary.flatMap(block =>
+      block.type === "text" && block.text.length > 0
+        ? [{ sessionUpdate: "compaction_summary_chunk" as const, compactionId: CompactionId(event.data.compactionId), content: { type: "text" as const, text: block.text } }]
+        : [],
+    )
+  }
+  if (event.type === "compaction/end") {
+    const error = event.data.error
+    return [
+      error === undefined
+        ? { sessionUpdate: "compaction_update", compactionId: CompactionId(event.data.compactionId), status: "completed" }
+        : { sessionUpdate: "compaction_update", compactionId: CompactionId(event.data.compactionId), status: "failed", error },
+    ]
+  }
+  return []
+}
+
+/** Brand a string as a v2 CompactionId. */
+function CompactionId(id: string): CompactionId {
+  return id as CompactionId
 }
 
 function agentOptions(config: AcpConfig): { provider?: string; model?: string } {

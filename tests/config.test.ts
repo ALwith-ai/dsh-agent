@@ -42,10 +42,11 @@ describe("session config options", () => {
     await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "one" }] })
     await untilFrame(() => h.states().filter(entry => entry.state === "idle").length >= 1)
 
-    // Desktop dialect: { configId, value } without the schema's `type` discriminant.
-    const switched = await h.agent.request<{ configOptions: unknown }>("session/set_config_option", {
+    // Schema shape: a select option is set with `type: "id"` (ALwith Desktop sends exactly this).
+    const switched = await h.agent.request("session/set_config_option", {
       sessionId,
       configId: "model",
+      type: "id",
       value: "mock-pro",
     })
     expect(modelOption(switched.configOptions).currentValue).toBe("mock-pro")
@@ -66,7 +67,7 @@ describe("session config options", () => {
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
     await expect(
-      h.agent.request("session/set_config_option", { sessionId, configId: "mode", value: "x" }),
+      h.agent.request("session/set_config_option", { sessionId, configId: "mode", type: "id", value: "x" }),
     ).rejects.toThrow()
     await h.dispose()
   })

@@ -78,3 +78,53 @@ describe("alwith-dsh-acp bridge", () => {
     await h.dispose()
   })
 })
+
+describe("ACP v2 baseline: user message report, session/close, compaction frames", () => {
+  test("an accepted prompt reports where the user message landed, keyed by the session log id", async () => {
+    const h = await makeHarness([textResponse("hello")])
+    await h.initialize()
+    const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
+    await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "hi there" }] })
+    await untilFrame(() => h.states().at(-1)?.state === "idle")
+    const reported = h.updates.filter(update => update.sessionUpdate === "user_message") as Array<{ messageId: string; content: Array<{ type: string; text?: string }> }>
+    expect(reported.length).toBe(1)
+    expect(reported[0]?.content).toEqual([{ type: "text", text: "hi there" }])
+    expect(typeof reported[0]?.messageId).toBe("string")
+    // the same id a replay reports the message under
+    const running = h.states().findIndex(entry => entry.state === "running")
+    expect(running).toBeGreaterThanOrEqual(0)
+    await h.dispose()
+  })
+
+  test("session/close releases the agent; a later prompt on that id is refused", async () => {
+    const h = await makeHarness([textResponse("hello")])
+    await h.initialize()
+    const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
+    expect(h.ctx.agents.get(sessionId as never)).toBeDefined()
+    const closed = await h.agent.request("session/close", { sessionId })
+    expect(Object.keys(closed)).toEqual([])
+    expect(h.ctx.agents.get(sessionId as never)).toBeUndefined()
+    await expect(
+      h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "still there?" }] }),
+    ).rejects.toThrow()
+    await h.dispose()
+  })
+
+  test("compaction events map to SDK 1.4 compaction frames", async () => {
+    const { compactionUpdates } = await import("../src/bridge.ts")
+    const start = compactionUpdates({ type: "compaction/start", data: { compactionId: "c1", turn: 3 } } as never)
+    expect(start).toEqual([{ sessionUpdate: "compaction_update", compactionId: "c1", status: "in_progress" }])
+    const summary = compactionUpdates({
+      type: "compaction/summary",
+      data: { compactionId: "c1", summary: [{ type: "text", text: "so far" }, { type: "text", text: "" }], shadowedRange: { start: 0, end: 4 } },
+    } as never)
+    expect(summary).toEqual([{ sessionUpdate: "compaction_summary_chunk", compactionId: "c1", content: { type: "text", text: "so far" } }])
+    expect(compactionUpdates({ type: "compaction/end", data: { compactionId: "c1", turn: 3 } } as never)).toEqual([
+      { sessionUpdate: "compaction_update", compactionId: "c1", status: "completed" },
+    ])
+    expect(compactionUpdates({ type: "compaction/end", data: { compactionId: "c1", turn: 3, error: "boom" } } as never)).toEqual([
+      { sessionUpdate: "compaction_update", compactionId: "c1", status: "failed", error: "boom" },
+    ])
+    expect(compactionUpdates({ type: "compaction/prune", data: { shadowedRange: { start: 0, end: 4 } } } as never)).toEqual([])
+  })
+})
