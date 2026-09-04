@@ -660,11 +660,12 @@ export function apply(ctx: Context, config: AcpConfig): void {
       const sessions = headers
         .filter(header => params.cwd === undefined || params.cwd === null || header.cwd === params.cwd)
         .sort((a, b) => b.createdAt - a.createdAt)
-        .map(header => ({
-          sessionId: header.id,
-          cwd: header.cwd,
-          updatedAt: new Date(header.createdAt).toISOString(),
-        }))
+        .map(header => {
+          // Every bridge session is created with meta.cwd; a header without one is a
+          // persistence anomaly, not a session the host could resume.
+          if (header.cwd === undefined) throw internalError(`persisted session ${header.id} has no cwd`)
+          return { sessionId: header.id, cwd: header.cwd, updatedAt: new Date(header.createdAt).toISOString() }
+        })
       return { sessions, nextCursor: null }
     })
     .onRequest("session/resume", async (context): Promise<ResumeSessionResponse> => {
