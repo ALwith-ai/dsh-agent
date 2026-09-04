@@ -1,4 +1,4 @@
-# alwith-dsh
+# dsh-agent
 
 English | [中文](README.zh.md)
 
@@ -28,11 +28,11 @@ DEEPSEEK_API_KEY=… bun src/main.ts   # ACP v2 server over stdio
 bun test                              # protocol tests with a mock adapter; no real model calls
 ```
 
-`session/resume` semantics: an omitted `replayFrom` means context-only restore; `{ type: "start" }` replays the whole conversation as `session/update` frames. Session logs live under `$ALWITH_DSH_SESSIONS_ROOT` (default `~/.alwith-dsh/sessions`).
+`session/resume` semantics: an omitted `replayFrom` means context-only restore; `{ type: "start" }` replays the whole conversation as `session/update` frames. Session logs live under `$ALWITH_DSH_SESSIONS_ROOT` (default `~/.dsh-agent/sessions`).
 
 ## Plugins
 
-The composition per preset is fixed here in code (deterministic), but users keep dsh's two degrees of freedom — per-plugin enable/disable and per-plugin config — through an overrides file (`$ALWITH_DSH_PLUGINS_FILE`, default `~/.alwith-dsh/plugins.json`), read at spawn so changes apply to new sessions:
+The composition per preset is fixed here in code (deterministic), but users keep dsh's two degrees of freedom — per-plugin enable/disable and per-plugin config — through an overrides file (`$ALWITH_DSH_PLUGINS_FILE`, default `~/.dsh-agent/plugins.json`), read at spawn so changes apply to new sessions:
 
 ```sh
 bun src/main.ts plugins list --preset standard   # every row of the preset, JSON

@@ -35,7 +35,7 @@ describe("session config options", () => {
 
   test("set_config_option(model) switches the live session; the next request runs on the new model", async () => {
     const h = await makeHarness([textResponse("before"), textResponse("after")], {
-      sessionsRoot: mkdtempSync(join(tmpdir(), "alwith-dsh-config-")),
+      sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-config-")),
     })
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })

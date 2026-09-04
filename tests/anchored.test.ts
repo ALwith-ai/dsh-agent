@@ -23,7 +23,7 @@ describe("anchored preset", () => {
     const adapter = new MockAdapter([textResponse("anchor"), textResponse("promoted")])
     const ctx = await composeRuntime({
       preset: "anchored",
-      sessionsRoot: mkdtempSync(join(tmpdir(), "alwith-dsh-anchored-")),
+      sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-anchored-")),
     })
     ctx.llm.registerAdapter(["mock"], adapter)
 

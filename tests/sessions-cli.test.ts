@@ -19,7 +19,7 @@ function captureStdout(): { lines: string[]; restore: () => void } {
 
 describe("sessions CLI", () => {
   test("list surfaces persisted sessions; show returns meta and the event log", async () => {
-    const root = mkdtempSync(join(tmpdir(), "alwith-dsh-sessions-"))
+    const root = mkdtempSync(join(tmpdir(), "dsh-agent-sessions-"))
     const h = await makeHarness([textResponse("hello")], { sessionsRoot: root })
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
@@ -46,7 +46,7 @@ describe("sessions CLI", () => {
   })
 
   test("show of an unknown session fails loud", async () => {
-    const root = mkdtempSync(join(tmpdir(), "alwith-dsh-sessions-"))
+    const root = mkdtempSync(join(tmpdir(), "dsh-agent-sessions-"))
     await expect(runSessionsCli(["show", "no-such-session", "--root", root])).rejects.toThrow()
   })
 })

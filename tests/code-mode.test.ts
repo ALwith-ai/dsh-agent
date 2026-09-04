@@ -38,7 +38,7 @@ describe("code preset (PTC)", () => {
     ])
     const ctx = await composeRuntime({
       preset: "code",
-      sessionsRoot: mkdtempSync(join(tmpdir(), "alwith-dsh-code-")),
+      sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-code-")),
     })
     ctx.llm.registerAdapter(["mock"], adapter)
 

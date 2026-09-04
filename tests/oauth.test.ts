@@ -9,7 +9,7 @@ import { composeRuntime } from "../src/compose.ts"
 import { composeCredentialPlane, hostLoginInteraction, runOauthCli } from "../src/oauth.ts"
 
 function tempFile(): string {
-  return join(mkdtempSync(join(tmpdir(), "alwith-dsh-oauth-")), ".credentials.yaml")
+  return join(mkdtempSync(join(tmpdir(), "dsh-agent-oauth-")), ".credentials.yaml")
 }
 
 async function captureCli(argv: string[]): Promise<string[]> {

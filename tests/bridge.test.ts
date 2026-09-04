@@ -3,12 +3,12 @@
 import { describe, expect, test } from "bun:test"
 import { makeHarness, textResponse, untilFrame } from "./harness.ts"
 
-describe("alwith-dsh-acp bridge", () => {
+describe("dsh-agent bridge", () => {
   test("initialize reports protocolVersion 2 with v2 info", async () => {
     const h = await makeHarness([])
     const result = await h.initialize()
     expect(result.protocolVersion).toBe(2)
-    expect(result.info.name).toBe("alwith-dsh-acp")
+    expect(result.info.name).toBe("dsh-agent")
     await h.dispose()
   })
 

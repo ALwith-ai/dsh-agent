@@ -12,7 +12,7 @@ import JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl"
 import type {} from "@deepseek-ai/dsh-session-persistence"
 
 function defaultSessionsRoot(): string {
-  return process.env.ALWITH_DSH_SESSIONS_ROOT ?? join(homedir(), ".alwith-dsh", "sessions")
+  return process.env.ALWITH_DSH_SESSIONS_ROOT ?? join(homedir(), ".dsh-agent", "sessions")
 }
 
 interface CliFlags {

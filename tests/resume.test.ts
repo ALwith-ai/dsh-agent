@@ -7,7 +7,7 @@ import { join } from "node:path"
 import { makeHarness, textResponse, untilFrame } from "./harness.ts"
 
 function tempRoot(): string {
-  return mkdtempSync(join(tmpdir(), "alwith-dsh-resume-"))
+  return mkdtempSync(join(tmpdir(), "dsh-agent-resume-"))
 }
 
 function chunkText(h: Awaited<ReturnType<typeof makeHarness>>, kind: string): string {

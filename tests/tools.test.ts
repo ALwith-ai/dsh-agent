@@ -60,7 +60,7 @@ async function makeFullHarness(
   options: { permissionMode?: "read-only" | "workspace-write"; workspaceRoot?: string } = {},
 ) {
   const adapter = new MockAdapter(script)
-  const ctx = await composeRuntime({ sessionsRoot: mkdtempSync(join(tmpdir(), "alwith-dsh-tools-")), ...options })
+  const ctx = await composeRuntime({ sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-tools-")), ...options })
   ctx.llm.registerAdapter(["mock"], adapter)
 
   const agentToClient = new TransformStream<Uint8Array, Uint8Array>()
@@ -105,7 +105,7 @@ async function makeFullHarness(
 
 describe("tool surface over the real composition", () => {
   test("in-workspace bash runs sandboxed without asking; tool_call_update streams in_progress then completed", async () => {
-    const workspaceRoot = mkdtempSync(join(tmpdir(), "alwith-dsh-ws-"))
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "dsh-agent-ws-"))
     const h = await makeFullHarness(
       [
         toolCallResponse("call-1", "bash", { command: "printf dsh-tools-ok > marker.txt && cat marker.txt", description: "write then read a marker" }),
@@ -134,7 +134,7 @@ describe("tool surface over the real composition", () => {
   }, 20000)
 
   test("sandbox denial -> model escalates with sandbox_permissions -> one-shot approval allows the retry", async () => {
-    const workspaceRoot = mkdtempSync(join(tmpdir(), "alwith-dsh-ws-"))
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "dsh-agent-ws-"))
     const command = "printf escalated-ok > marker.txt && cat marker.txt"
     const h = await makeFullHarness(
       [
@@ -175,7 +175,7 @@ describe("tool surface over the real composition", () => {
   }, 20000)
 
   test("a rejected escalation fails the retry without killing the turn", async () => {
-    const workspaceRoot = mkdtempSync(join(tmpdir(), "alwith-dsh-ws-"))
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "dsh-agent-ws-"))
     const command = "printf nope > marker.txt"
     const h = await makeFullHarness(
       [

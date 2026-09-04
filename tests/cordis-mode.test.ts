@@ -69,7 +69,7 @@ describe("cordis preset (creator)", () => {
     const adapter = new MockAdapter(script)
     const ctx = await composeRuntime({
       preset: "cordis",
-      sessionsRoot: mkdtempSync(join(tmpdir(), "alwith-dsh-cordis-")),
+      sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-cordis-")),
     })
     ctx.llm.registerAdapter(["mock"], adapter)
 

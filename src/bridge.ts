@@ -66,7 +66,7 @@ import type {} from "@deepseek-ai/dsh-session-persistence"
 import type { ContentBlock as DshContentBlock } from "@deepseek-ai/dsh-llm"
 import { acpPromptToText, promptHasUnsupportedContent, turnEndToStopReason } from "./codec.ts"
 
-export const name = "alwith-dsh-acp"
+export const name = "dsh-agent"
 /** The bridge creates and owns agents (llm serves background session titling); every other concern is carried by the composition. */
 export const inject = ["agents", "llm"]
 
@@ -612,7 +612,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
     .onRequest("initialize", (): InitializeResponse => {
       return {
         protocolVersion: ACP_PROTOCOL_VERSION,
-        info: { name: "alwith-dsh-acp", title: "ALwith dsh bridge", version: "0.1.0" },
+        info: { name: "dsh-agent", title: "ALwith dsh bridge", version: "0.1.0" },
         authMethods: [],
         capabilities: { session: { prompt: {} } },
       }
@@ -848,7 +848,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
       logger.warn(`acp: connection-close teardown failed: ${String(error)}`)
     })
 
-  ctx.effect(() => quiesce, "alwith-dsh-acp.connection")
+  ctx.effect(() => quiesce, "dsh-agent.connection")
 }
 
 /**

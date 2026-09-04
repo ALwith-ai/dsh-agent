@@ -8,7 +8,7 @@
  * `ctx.credentials`. This module only composes that plane and drives it:
  *
  * - `dsh-credentials-local` at `ALWITH_DSH_OAUTH_CREDENTIALS` (default
- *   `~/.alwith-dsh/.credentials.yaml`; the file is private to the OS user),
+ *   `~/.dsh-agent/.credentials.yaml`; the file is private to the OS user),
  * - `dsh-authorization` — the flow registry the adapter registers into,
  * - the `oauth login/status/logout` CLI. `login` emits the flow's notices as
  *   JSON lines on stdout (`{"type":"auth_url",…}` → the host opens the
@@ -33,7 +33,7 @@ import * as LlmPiAi from "@deepseek-ai/dsh-llm-pi-ai"
 const PI_AI_RECORD_SCOPE = "llm-pi-ai"
 
 export function defaultCredentialsFile(): string {
-  return process.env.ALWITH_DSH_OAUTH_CREDENTIALS ?? join(homedir(), ".alwith-dsh", ".credentials.yaml")
+  return process.env.ALWITH_DSH_OAUTH_CREDENTIALS ?? join(homedir(), ".dsh-agent", ".credentials.yaml")
 }
 
 function emit(event: Record<string, unknown>): void {

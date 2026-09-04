@@ -21,7 +21,7 @@ import {
 export function defaultPluginsFile(): string {
   return (
     process.env.ALWITH_DSH_PLUGINS_FILE ??
-    join(homedir(), ".alwith-dsh", "plugins.json")
+    join(homedir(), ".dsh-agent", "plugins.json")
   );
 }
 
@@ -123,7 +123,7 @@ function listingFor(preset: HarnessPreset, file: string) {
   // Listing does not touch the sandbox or session log; placeholder roots keep
   // the row configs representative without requiring the host's real paths.
   const rows = pluginRows({
-    sessionsRoot: join(homedir(), ".alwith-dsh", "sessions"),
+    sessionsRoot: join(homedir(), ".dsh-agent", "sessions"),
     workspaceRoot: process.cwd(),
     permissionMode: "workspace-write",
     preset,

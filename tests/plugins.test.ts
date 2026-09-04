@@ -189,7 +189,7 @@ describe("plugins CLI", () => {
 
   test("set disabled → file written → list reflects it → set enabled restores", async () => {
     const file = join(
-      mkdtempSync(join(tmpdir(), "alwith-dsh-plugins-")),
+      mkdtempSync(join(tmpdir(), "dsh-agent-plugins-")),
       "plugins.json",
     );
     const stdout = captureStdout();
@@ -230,7 +230,7 @@ describe("plugins CLI", () => {
 
   test("set validates before writing: core row and broken dependency both leave the file untouched", async () => {
     const file = join(
-      mkdtempSync(join(tmpdir(), "alwith-dsh-plugins-")),
+      mkdtempSync(join(tmpdir(), "dsh-agent-plugins-")),
       "plugins.json",
     );
     const stdout = captureStdout();
@@ -253,7 +253,7 @@ describe("plugins CLI", () => {
 
   test("configure validates and atomically patches curated fields", async () => {
     const file = join(
-      mkdtempSync(join(tmpdir(), "alwith-dsh-plugins-")),
+      mkdtempSync(join(tmpdir(), "dsh-agent-plugins-")),
       "plugins.json",
     );
     const stdout = captureStdout();

@@ -1,4 +1,4 @@
-# alwith-dsh
+# dsh-agent
 
 [English](README.md) | 中文
 
@@ -28,11 +28,11 @@ DEEPSEEK_API_KEY=… bun src/main.ts   # stdio 上的 ACP v2 服务器
 bun test                              # mock 适配器协议测试,不打真模型
 ```
 
-`session/resume` 语义:`replayFrom` 省略 = 只恢复上下文;`{ type: "start" }` = 整段对话重放为 `session/update` 帧。会话日志在 `$ALWITH_DSH_SESSIONS_ROOT`(默认 `~/.alwith-dsh/sessions`)。
+`session/resume` 语义:`replayFrom` 省略 = 只恢复上下文;`{ type: "start" }` = 整段对话重放为 `session/update` 帧。会话日志在 `$ALWITH_DSH_SESSIONS_ROOT`(默认 `~/.dsh-agent/sessions`)。
 
 ## 插件
 
-各预设的组合面在代码里写死(确定性),但用户保有 dsh 的两个自由度——逐插件开关与逐插件配置——经覆盖文件(`$ALWITH_DSH_PLUGINS_FILE`,默认 `~/.alwith-dsh/plugins.json`)生效;spawn 时读取,改动作用于新会话:
+各预设的组合面在代码里写死(确定性),但用户保有 dsh 的两个自由度——逐插件开关与逐插件配置——经覆盖文件(`$ALWITH_DSH_PLUGINS_FILE`,默认 `~/.dsh-agent/plugins.json`)生效;spawn 时读取,改动作用于新会话:
 
 ```sh
 bun src/main.ts plugins list --preset standard   # 该预设的全部行,JSON
