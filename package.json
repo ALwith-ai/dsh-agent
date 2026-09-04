@@ -1,6 +1,6 @@
 {
   "name": "@alwith-ai/dsh-agent",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "ACP v2 agent built on DeepSeek Harness: fixed plugin compositions (standard / minimal / anchored / code / cordis), streaming turns with direct state reporting, permissions, resume with replay, multi-provider credentials and subscription login",
   "license": "MIT",
   "repository": {

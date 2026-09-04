@@ -1,3 +1,6 @@
+import { join } from "node:path"
+import { tmpdir } from "node:os"
+import { mkdtempSync } from "node:fs"
 /** Protocol behavior tests over in-memory transport with a mock adapter; no real model calls. */
 
 import { describe, expect, test } from "bun:test"
@@ -11,6 +14,39 @@ describe("dsh-agent bridge", () => {
     expect(result.info.name).toBe("dsh-agent")
     await h.dispose()
   })
+
+  test("initialize carries the package version, not a hardcoded one", async () => {
+    const h = await makeHarness([])
+    const result = await h.initialize()
+    expect(result.info.version).toMatch(/^\d+\.\d+\.\d+/)
+    expect(result.info.version).not.toBe("0.1.0")
+  })
+
+  test("session/list is baseline: lists persisted sessions newest first, narrowed by cwd", async () => {
+    const h = await makeHarness([textResponse("hi"), textResponse("hi")], {
+      sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-list-")),
+    })
+    await h.initialize()
+    const first = await h.agent.request("session/new", { cwd: "/tmp" })
+    await h.agent.request("session/prompt", { sessionId: first.sessionId, prompt: [{ type: "text", text: "a" }] })
+    const second = await h.agent.request("session/new", { cwd: "/tmp/other" })
+    await h.agent.request("session/prompt", { sessionId: second.sessionId, prompt: [{ type: "text", text: "b" }] })
+    // Persistence materializes a session when its first event batch flushes (a real
+    // signal, polled) — the prompt response does not wait for durability.
+    const listed = async () => (await h.agent.request("session/list", {})).sessions
+    const deadline = Date.now() + 2000
+    while ((await listed()).length < 2) {
+      if (Date.now() > deadline) throw new Error("sessions never materialized in persistence")
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    const all = await h.agent.request("session/list", {})
+    expect(all.sessions.map(session => session.sessionId)).toEqual([second.sessionId, first.sessionId])
+    expect(all.sessions[0]).toMatchObject({ cwd: "/tmp/other" })
+    expect(all.sessions[0]?.updatedAt).toMatch(/^\d{4}-/)
+    const narrowed = await h.agent.request("session/list", { cwd: "/tmp" })
+    expect(narrowed.sessions.map(session => session.sessionId)).toEqual([first.sessionId])
+  })
+
 
   test("prompt streams token by token; concatenation equals the full text exactly once", async () => {
     const h = await makeHarness([textResponse("hello")])

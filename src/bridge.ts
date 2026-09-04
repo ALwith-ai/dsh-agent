@@ -22,6 +22,7 @@
  */
 
 import type { Context } from "@deepseek-ai/cordis"
+import packageJson from "../package.json" with { type: "json" }
 import { randomUUID } from "node:crypto"
 import { isAbsolute } from "node:path"
 import { Readable, Writable } from "node:stream"
@@ -36,6 +37,8 @@ import {
   type CancelSessionNotification,
   type CloseSessionRequest,
   type CloseSessionResponse,
+  type ListSessionsRequest,
+  type ListSessionsResponse,
   type CompactionId,
   type InitializeResponse,
   type NewSessionRequest,
@@ -612,7 +615,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
     .onRequest("initialize", (): InitializeResponse => {
       return {
         protocolVersion: ACP_PROTOCOL_VERSION,
-        info: { name: "dsh-agent", title: "ALwith dsh bridge", version: "0.1.0" },
+        info: { name: "dsh-agent", title: "ALwith dsh bridge", version: packageJson.version },
         authMethods: [],
         capabilities: { session: { prompt: {} } },
       }
@@ -644,6 +647,25 @@ export function apply(ctx: Context, config: AcpConfig): void {
       const record = sessions.get(sessionId)
       if (record === undefined) throw internalError("session record vanished during session/new")
       return { sessionId, configOptions: await modelConfigOptions(record) }
+    })
+    // v2 baseline: session/list is part of the `session: {}` surface, no capability key.
+    // Headers come from dsh's own persistence (the on-disk format stays private to it);
+    // `cwd` narrows to sessions started in that workspace, like the cli.
+    .onRequest("session/list", async (context): Promise<ListSessionsResponse> => {
+      assertOpen()
+      const params: ListSessionsRequest = context.params
+      const persistence = ctx.get("sessionPersistence")
+      if (persistence === undefined) throw internalError("session persistence is not mounted")
+      const headers = await persistence.list()
+      const sessions = headers
+        .filter(header => params.cwd === undefined || params.cwd === null || header.cwd === params.cwd)
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .map(header => ({
+          sessionId: header.id,
+          cwd: header.cwd,
+          updatedAt: new Date(header.createdAt).toISOString(),
+        }))
+      return { sessions, nextCursor: null }
     })
     .onRequest("session/resume", async (context): Promise<ResumeSessionResponse> => {
       assertOpen()
