@@ -617,7 +617,13 @@ export function apply(ctx: Context, config: AcpConfig): void {
         protocolVersion: ACP_PROTOCOL_VERSION,
         info: { name: "dsh-agent", title: "ALwith dsh bridge", version: packageJson.version },
         authMethods: [],
-        capabilities: { session: { prompt: {} } },
+        capabilities: {
+          session: { prompt: {} },
+          // seedHistory: a host that keeps its own transcript can continue it here —
+          // `session/new` with `_meta.dsh.seedHistory: [{role, text}]` injects it as
+          // model-facing context (agent.inject) before the first turn.
+          _meta: { dsh: { seedHistory: true } },
+        },
       }
     })
     .onRequest("session/new", async (context): Promise<NewSessionResponse> => {
@@ -646,6 +652,12 @@ export function apply(ctx: Context, config: AcpConfig): void {
       })
       const record = sessions.get(sessionId)
       if (record === undefined) throw internalError("session record vanished during session/new")
+      const seed = seedHistoryOf(params._meta)
+      if (seed.length > 0) {
+        record.agent.inject(
+          createUserMessage({ content: [{ type: "text", text: seedTranscript(seed) }], source: { kind: "user" } }),
+        )
+      }
       return { sessionId, configOptions: await modelConfigOptions(record) }
     })
     // v2 baseline: session/list is part of the `session: {}` surface, no capability key.
@@ -923,4 +935,30 @@ function validateSessionParams(params: NewSessionRequest): void {
   if (params.mcpServers !== undefined && params.mcpServers.length > 0) {
     throw invalidParams("mcpServers is not supported")
   }
+}
+
+export interface SeedMessage {
+  role: "user" | "assistant"
+  text: string
+}
+
+/** `session/new` `_meta.dsh.seedHistory`: prior conversation the host kept, to inject as model-facing context. */
+export function seedHistoryOf(meta: NewSessionRequest["_meta"]): SeedMessage[] {
+  const raw = (meta as { dsh?: { seedHistory?: unknown } } | null | undefined)?.dsh?.seedHistory
+  if (raw === undefined || raw === null) return []
+  if (!Array.isArray(raw)) throw invalidParams("seedHistory must be an array of {role, text}")
+  return raw.map((entry, index) => {
+    const role = (entry as { role?: unknown })?.role
+    const text = (entry as { text?: unknown })?.text
+    if ((role !== "user" && role !== "assistant") || typeof text !== "string") {
+      throw invalidParams(`seedHistory[${index}] must be {role: "user" | "assistant", text: string}`)
+    }
+    return { role, text }
+  })
+}
+
+/** dsh injects one user-authored context message; the transcript is framed so the model reads it as history. */
+export function seedTranscript(seed: readonly SeedMessage[]): string {
+  const lines = seed.map(message => `${message.role === "user" ? "User" : "Assistant"}: ${message.text}`)
+  return `<prior_conversation>\n${lines.join("\n\n")}\n</prior_conversation>`
 }
