@@ -51,7 +51,9 @@ import * as ToolFsSearch from "@deepseek-ai/dsh-tool-fs-search";
 import * as ToolWeb from "@deepseek-ai/dsh-tool-web";
 import * as WebSearchDeepseek from "@deepseek-ai/dsh-web-search-deepseek";
 import * as AnchoredToolBootstrap from "./vendor/anchored-tool-bootstrap.mjs";
-import CodeRuntimeWorker from "@deepseek-ai/dsh-code-runtime-worker-thread";
+// Fork of @deepseek-ai/dsh-code-runtime-worker-thread (same version): strips TypeScript
+// types via amaro under Bun. Upstream takes no PRs; see github.com/nyssance/dsh-code-runtime-worker-thread.
+import CodeRuntimeWorker from "@nyssance/dsh-code-runtime-worker-thread";
 import CordisHostRunner from "@deepseek-ai/dsh-cordis-host-runner";
 import * as ToolCordis from "@deepseek-ai/dsh-tool-cordis";
 import SkillRegistry from "@deepseek-ai/dsh-skill";
@@ -521,8 +523,8 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       ...codingTools,
     );
     if (preset === "code") {
-      // Code Mode presentation backed by the official worker runtime
-      // (Bun-patched: amaro strip + null stdio, see patches/).
+      // Code Mode presentation backed by the official worker runtime (via the
+      // @nyssance fork: Bun lacks node:module.stripTypeScriptTypes).
       rows.push(
         tool(
           "code-runtime-worker-thread",

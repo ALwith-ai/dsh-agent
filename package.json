@@ -17,7 +17,6 @@
     "@deepseek-ai/dsh-bash-local": "0.1.2-rc.1",
     "@deepseek-ai/dsh-bash-sandbox": "0.1.2-rc.1",
     "@deepseek-ai/dsh-code-runtime": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-code-runtime-worker-thread": "0.1.2-rc.1",
     "@deepseek-ai/dsh-compaction": "0.1.2-rc.1",
     "@deepseek-ai/dsh-cordis-host-runner": "0.1.2-rc.1",
     "@deepseek-ai/dsh-credentials": "0.1.2-rc.1",
@@ -62,6 +61,7 @@
     "@deepseek-ai/dsh-web": "0.1.2-rc.1",
     "@deepseek-ai/dsh-web-search-deepseek": "0.1.2-rc.1",
     "@deepseek-ai/schemastery": "3.18.1",
+    "@nyssance/dsh-code-runtime-worker-thread": "0.1.2-rc.1",
     "amaro": "1.1.11"
   },
   "devDependencies": {
@@ -75,8 +75,5 @@
     "@google/genai",
     "koffi",
     "node-pty"
-  ],
-  "patchedDependencies": {
-    "@deepseek-ai/dsh-code-runtime-worker-thread@0.1.2-rc.1": "patches/@deepseek-ai%2Fdsh-code-runtime-worker-thread@0.1.2-rc.1.patch"
-  }
+  ]
 }

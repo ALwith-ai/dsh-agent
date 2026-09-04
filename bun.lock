@@ -13,7 +13,6 @@
         "@deepseek-ai/dsh-bash-local": "0.1.2-rc.1",
         "@deepseek-ai/dsh-bash-sandbox": "0.1.2-rc.1",
         "@deepseek-ai/dsh-code-runtime": "0.1.2-rc.1",
-        "@deepseek-ai/dsh-code-runtime-worker-thread": "0.1.2-rc.1",
         "@deepseek-ai/dsh-compaction": "0.1.2-rc.1",
         "@deepseek-ai/dsh-cordis-host-runner": "0.1.2-rc.1",
         "@deepseek-ai/dsh-credentials": "0.1.2-rc.1",
@@ -58,6 +57,7 @@
         "@deepseek-ai/dsh-web": "0.1.2-rc.1",
         "@deepseek-ai/dsh-web-search-deepseek": "0.1.2-rc.1",
         "@deepseek-ai/schemastery": "3.18.1",
+        "@nyssance/dsh-code-runtime-worker-thread": "0.1.2-rc.1",
         "amaro": "1.1.11",
       },
       "devDependencies": {
@@ -74,9 +74,6 @@
     "@deepseek-ai/dsh-subprocess-local",
     "koffi",
   ],
-  "patchedDependencies": {
-    "@deepseek-ai/dsh-code-runtime-worker-thread@0.1.2-rc.1": "patches/@deepseek-ai%2Fdsh-code-runtime-worker-thread@0.1.2-rc.1.patch",
-  },
   "packages": {
     "@agentclientprotocol/sdk": ["@agentclientprotocol/sdk@1.4.0", "", { "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-/eufudw+aFY1LKLolT6yFE6UMmYRl7fMJ/DEONSIyR6wI3slHWITBsANRGqXEY8FRzqUxwh7QEaGiZHcJPVThg=="],
 
@@ -157,8 +154,6 @@
     "@deepseek-ai/dsh-brand": ["@deepseek-ai/dsh-brand@0.1.2-rc.1", "", { "peerDependencies": { "@deepseek-ai/cordis": "^4.0.2" } }, "sha512-y2RHIag3kzLdY8kTBuSUSTsKzWPscJrysNObXTiNM7stXLpa3jXpshsB1caqGzNx50vYcmHeN1gFVECgx3NZHg=="],
 
     "@deepseek-ai/dsh-code-runtime": ["@deepseek-ai/dsh-code-runtime@0.1.2-rc.1", "", { "peerDependencies": { "@deepseek-ai/cordis": "^4.0.2" } }, "sha512-dv5UszPJb/AFcarZc2c6h5z/X80bsrSd3bfIOugwNVclSI6P+L3ixseoZKgyks7T0Ap0h6ngXGk2WeoUkmYxnQ=="],
-
-    "@deepseek-ai/dsh-code-runtime-worker-thread": ["@deepseek-ai/dsh-code-runtime-worker-thread@0.1.2-rc.1", "", { "dependencies": { "@deepseek-ai/dsh-util-values": "^0.1.2-rc.1", "@deepseek-ai/schemastery": "^3.18.2" }, "peerDependencies": { "@deepseek-ai/cordis": "^4.0.2", "@deepseek-ai/dsh-code-runtime": "^0.1.2-rc.1", "@deepseek-ai/dsh-session": "^0.1.2-rc.1", "@deepseek-ai/dsh-timeout": "^0.1.2-rc.1" } }, "sha512-0Y/Uiq9iK2Z8/ODL+KOsjbPzZ+n3D+j52CcBpblzysKw2GOF/zAoQtEZHhtgy3oK2R8HRxrQo4zJI20v7fC43A=="],
 
     "@deepseek-ai/dsh-commands": ["@deepseek-ai/dsh-commands@0.1.2-rc.1", "", { "dependencies": { "@deepseek-ai/dsh-util-crypto": "^0.1.2-rc.1", "zod": "^4.4.3" }, "peerDependencies": { "@deepseek-ai/cordis": "^4.0.2", "@deepseek-ai/dsh-agent": "^0.1.2-rc.1", "@deepseek-ai/dsh-attachment": "^0.1.2-rc.1", "@deepseek-ai/dsh-brand": "^0.1.2-rc.1", "@deepseek-ai/dsh-invariants": "^0.1.2-rc.1", "@deepseek-ai/dsh-llm": "^0.1.2-rc.1", "@deepseek-ai/dsh-scope": "^0.1.2-rc.1", "@deepseek-ai/dsh-session": "^0.1.2-rc.1", "@deepseek-ai/dsh-typert-protocol": "^0.1.2-rc.1" } }, "sha512-uBh4JTX7pOkFhmbWjXjVLnOQOawyccC7+DazbHrLRN6/wy4OgTRH+DaW0+ibLq+XRAO19OvBTtuoh3x/KkJx1Q=="],
 
@@ -329,6 +324,8 @@
     "@koromix/koffi-win32-x64": ["@koromix/koffi-win32-x64@3.2.0", "", { "os": "win32", "cpu": "x64" }, "sha512-09p81HVKDsLXkyMRrLQzsFtCjdcFgbRW765roAu5iChHj4gfWVrGDdvtBldc1BulIEgH1/gRwa2E4vEtW3/hlw=="],
 
     "@mixmark-io/domino": ["@mixmark-io/domino@2.2.0", "", {}, "sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw=="],
+
+    "@nyssance/dsh-code-runtime-worker-thread": ["@nyssance/dsh-code-runtime-worker-thread@0.1.2-rc.1", "", { "dependencies": { "@deepseek-ai/dsh-util-values": "^0.1.2-rc.1", "@deepseek-ai/schemastery": "^3.18.2", "amaro": "^1.1.11" }, "peerDependencies": { "@deepseek-ai/cordis": "^4.0.2", "@deepseek-ai/dsh-code-runtime": "^0.1.2-rc.1", "@deepseek-ai/dsh-session": "^0.1.2-rc.1", "@deepseek-ai/dsh-timeout": "^0.1.2-rc.1" } }, "sha512-i9/Q/YuZhUDHXwyKUZWWZrvvzFAJzvIX0M8SQ/jQ89xswYFnjlKF0H5ANt+leuEgJU6zi2C1WP5KCBujztytSw=="],
 
     "@protobufjs/aspromise": ["@protobufjs/aspromise@1.1.2", "", {}, "sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ=="],
 
@@ -554,8 +551,6 @@
 
     "@deepseek-ai/dsh-bash-local/@deepseek-ai/schemastery": ["@deepseek-ai/schemastery@3.18.2", "", { "dependencies": { "@deepseek-ai/cosmokit": "^1.8.3", "@standard-schema/spec": "^1.1.0" } }, "sha512-njDtZsznjYxok7KLLlHOPyuv2efdWVbSflAHgztSfbMsg+CVraEoRe2DjOCgClYv3ZCSm7WXoaUkbB/+RY7tWQ=="],
 
-    "@deepseek-ai/dsh-code-runtime-worker-thread/@deepseek-ai/schemastery": ["@deepseek-ai/schemastery@3.18.2", "", { "dependencies": { "@deepseek-ai/cosmokit": "^1.8.3", "@standard-schema/spec": "^1.1.0" } }, "sha512-njDtZsznjYxok7KLLlHOPyuv2efdWVbSflAHgztSfbMsg+CVraEoRe2DjOCgClYv3ZCSm7WXoaUkbB/+RY7tWQ=="],
-
     "@deepseek-ai/dsh-cordis-host-runner/@deepseek-ai/schemastery": ["@deepseek-ai/schemastery@3.18.2", "", { "dependencies": { "@deepseek-ai/cosmokit": "^1.8.3", "@standard-schema/spec": "^1.1.0" } }, "sha512-njDtZsznjYxok7KLLlHOPyuv2efdWVbSflAHgztSfbMsg+CVraEoRe2DjOCgClYv3ZCSm7WXoaUkbB/+RY7tWQ=="],
 
     "@deepseek-ai/dsh-credentials-local/@deepseek-ai/schemastery": ["@deepseek-ai/schemastery@3.18.2", "", { "dependencies": { "@deepseek-ai/cosmokit": "^1.8.3", "@standard-schema/spec": "^1.1.0" } }, "sha512-njDtZsznjYxok7KLLlHOPyuv2efdWVbSflAHgztSfbMsg+CVraEoRe2DjOCgClYv3ZCSm7WXoaUkbB/+RY7tWQ=="],
@@ -617,6 +612,8 @@
     "@deepseek-ai/dsh-web/@deepseek-ai/schemastery": ["@deepseek-ai/schemastery@3.18.2", "", { "dependencies": { "@deepseek-ai/cosmokit": "^1.8.3", "@standard-schema/spec": "^1.1.0" } }, "sha512-njDtZsznjYxok7KLLlHOPyuv2efdWVbSflAHgztSfbMsg+CVraEoRe2DjOCgClYv3ZCSm7WXoaUkbB/+RY7tWQ=="],
 
     "@deepseek-ai/dsh-web-search-deepseek/@deepseek-ai/schemastery": ["@deepseek-ai/schemastery@3.18.2", "", { "dependencies": { "@deepseek-ai/cosmokit": "^1.8.3", "@standard-schema/spec": "^1.1.0" } }, "sha512-njDtZsznjYxok7KLLlHOPyuv2efdWVbSflAHgztSfbMsg+CVraEoRe2DjOCgClYv3ZCSm7WXoaUkbB/+RY7tWQ=="],
+
+    "@nyssance/dsh-code-runtime-worker-thread/@deepseek-ai/schemastery": ["@deepseek-ai/schemastery@3.18.2", "", { "dependencies": { "@deepseek-ai/cosmokit": "^1.8.3", "@standard-schema/spec": "^1.1.0" } }, "sha512-njDtZsznjYxok7KLLlHOPyuv2efdWVbSflAHgztSfbMsg+CVraEoRe2DjOCgClYv3ZCSm7WXoaUkbB/+RY7tWQ=="],
 
     "gcp-metadata/google-logging-utils": ["google-logging-utils@1.2.0", "", {}, "sha512-WE9av4wKDZgRjBwgVUabocx8T6/7o3Ca1Fat46FXDhXVAFibzNadedcOXrdgd1Kzmk8tsk/9ZH89Wyf/SqeZ3A=="],
 
