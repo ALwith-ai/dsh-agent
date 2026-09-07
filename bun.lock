@@ -57,7 +57,7 @@
         "@deepseek-ai/dsh-web": "0.1.2-rc.1",
         "@deepseek-ai/dsh-web-search-deepseek": "0.1.2-rc.1",
         "@deepseek-ai/schemastery": "3.18.1",
-        "@nyssance/dsh-code-runtime-worker-thread": "0.1.2-rc.1",
+        "@nyssance/dsh-code-runtime-worker-thread": "0.1.2-rc.1.nyssance.1",
         "amaro": "1.1.11",
       },
       "devDependencies": {
@@ -325,7 +325,7 @@
 
     "@mixmark-io/domino": ["@mixmark-io/domino@2.2.0", "", {}, "sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw=="],
 
-    "@nyssance/dsh-code-runtime-worker-thread": ["@nyssance/dsh-code-runtime-worker-thread@0.1.2-rc.1", "", { "dependencies": { "@deepseek-ai/dsh-util-values": "^0.1.2-rc.1", "@deepseek-ai/schemastery": "^3.18.2", "amaro": "^1.1.11" }, "peerDependencies": { "@deepseek-ai/cordis": "^4.0.2", "@deepseek-ai/dsh-code-runtime": "^0.1.2-rc.1", "@deepseek-ai/dsh-session": "^0.1.2-rc.1", "@deepseek-ai/dsh-timeout": "^0.1.2-rc.1" } }, "sha512-i9/Q/YuZhUDHXwyKUZWWZrvvzFAJzvIX0M8SQ/jQ89xswYFnjlKF0H5ANt+leuEgJU6zi2C1WP5KCBujztytSw=="],
+    "@nyssance/dsh-code-runtime-worker-thread": ["@nyssance/dsh-code-runtime-worker-thread@0.1.2-rc.1.nyssance.1", "", { "dependencies": { "@deepseek-ai/dsh-util-values": "^0.1.2-rc.1", "@deepseek-ai/schemastery": "^3.18.2", "amaro": "1.1.11" }, "peerDependencies": { "@deepseek-ai/cordis": "^4.0.2", "@deepseek-ai/dsh-code-runtime": "^0.1.2-rc.1", "@deepseek-ai/dsh-session": "^0.1.2-rc.1", "@deepseek-ai/dsh-timeout": "^0.1.2-rc.1" } }, "sha512-1HMDHa7i+bMnxy55GjMTyFs15Nb7brawMREFTCxHrEH9qKnH9/+0WSrkUwSiBBWT9CN3/IUyEF4tbjPYMd8tGQ=="],
 
     "@protobufjs/aspromise": ["@protobufjs/aspromise@1.1.2", "", {}, "sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ=="],
 
