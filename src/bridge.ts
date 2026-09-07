@@ -15,10 +15,9 @@
  *   client answer is pending, closing `idle` at settlement;
  * - permission requests use the v2 `subject` scheme with a required `title`.
  *
- * MVP scope: session/new + prompt + cancel. session/resume is the next
- * milestone (v2 renamed v1's session/load; it carries a client-driven
+ * Session resume uses v2's renamed session/load surface and a client-driven
  * replayFrom cursor — omitted means context-only restore, { type: "start" }
- * means replay the whole conversation as session/update frames).
+ * means replay the whole conversation as session/update frames.
  */
 
 import type { Context } from "@deepseek-ai/cordis"
@@ -110,6 +109,7 @@ interface SessionRecord {
     messageId: string
     turn: number | undefined
     endReason: TurnEndReason | undefined
+    cancelled: boolean
   } | undefined
   /** Pending permission requests; while > 0 the reported state is requires_action. */
   pendingPermissions: number
@@ -117,6 +117,8 @@ interface SessionRecord {
   lastState: "running" | "idle" | "requires_action" | undefined
   /** Whether a session_info_update title was already emitted (first prompt names the session). */
   titled: boolean
+  /** Cancels background title work when this record loses ownership. */
+  titleAbort: AbortController
   /** The model this session currently runs on (config default, then set_config_option switches). */
   model: string
   /** In-flight model switch; prompts await it so they never drive a retiring agent. */
@@ -232,12 +234,15 @@ export function apply(ctx: Context, config: AcpConfig): void {
    */
   const refineTitle = async (record: SessionRecord, firstPrompt: string): Promise<void> => {
     if (config.titleModel === undefined || config.provider === undefined) return
+    const signal = record.titleAbort.signal
+    if (signal.aborted || closed || ownedRecord(record.agent) !== record) return
     try {
       const message = createUserMessage({ content: [{ type: "text", text: firstPrompt }], source: { kind: "user" } })
       // Reasoning models burn budget on reasoning before any text, so the cap
       // is generous and the effort drops to the model's own "low" when it
       // advertises one (efforts are adapter-owned; an invented id is rejected).
       const modelInfo = await ctx.llm.resolveModelInfo(config.provider, config.titleModel).catch(() => undefined)
+      if (signal.aborted) return
       const lowEffort = modelInfo?.reasoning?.efforts.find(effort => String(effort.id) === "low")?.id
       let title = ""
       for await (const chunk of ctx.llm.stream({
@@ -249,6 +254,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
           "Reply with the title only: at most six words, no quotes, no trailing punctuation.",
         messages: [message],
         maxTokens: 128,
+        signal,
       })) {
         if (chunk.type === "text-delta") title += chunk.text
         if (chunk.type === "finish" && chunk.reason.kind !== "stop" && chunk.reason.kind !== "max-tokens") {
@@ -268,6 +274,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
         update: { sessionUpdate: "session_info_update", title },
       })
     } catch (error: unknown) {
+      if (signal.aborted) return
       logger.warn(`acp: llm session title failed: ${String(error)}`)
     }
   }
@@ -285,29 +292,32 @@ export function apply(ctx: Context, config: AcpConfig): void {
     return content
   }
 
-  // usage_update needs the context-window size; resolve it once per bridge
-  // lifetime (provider/model are fixed per composition) and skip the frame
-  // when the model does not declare a window.
-  let contextWindow: Promise<number | undefined> | undefined
-  const resolveContextWindow = (): Promise<number | undefined> => {
-    contextWindow ??= (async () => {
+  // Share catalog lookups per model; sessions can switch models independently.
+  const contextWindows = new Map<string, Promise<number | undefined>>()
+  const resolveContextWindow = (model: string): Promise<number | undefined> => {
+    const cached = contextWindows.get(model)
+    if (cached !== undefined) return cached
+    const pending = (async () => {
       const llm = ctx.get("llm")
-      if (llm === undefined || config.provider === undefined || config.model === undefined) return undefined
+      if (llm === undefined || config.provider === undefined || model.length === 0) return undefined
       try {
-        const info = await llm.resolveModelInfo(config.provider, config.model)
+        const info = await llm.resolveModelInfo(config.provider, model)
         return info.context?.contextWindow
       } catch (error: unknown) {
         logger.warn(`acp: resolveModel failed, usage_update disabled: ${String(error)}`)
         return undefined
       }
     })()
-    return contextWindow
+    contextWindows.set(model, pending)
+    return pending
   }
 
   const emitUsage = (record: SessionRecord, usage: { inputTokens: number; outputTokens: number; cacheReadTokens?: number } | undefined): void => {
     if (usage === undefined) return
-    void resolveContextWindow().then(size => {
-      if (size === undefined) return
+    const agent = record.agent
+    const model = record.model
+    void resolveContextWindow(model).then(size => {
+      if (size === undefined || closed || ownedRecord(agent) !== record || record.model !== model) return
       notify({
         sessionId: record.agent.session.id,
         update: {
@@ -400,6 +410,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
       pendingPermissions: 0,
       lastState: undefined,
       titled: true, // a resumed session already carries its name on the client
+      titleAbort: new AbortController(),
       model: config.model ?? "",
       switching: undefined,
     }
@@ -552,13 +563,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
     } finally {
       const inflight = record.inflight
       if (inflight !== undefined && event.type === "turn/end" && inflight.turn === event.data.turn) {
-        if (event.data.reason.kind === "error") {
-          record.inflight = undefined
-          reportIdle(record, "_error")
-          inflight.reject(internalError(`turn failed: ${event.data.reason.error.message}`))
-        } else {
-          inflight.endReason = event.data.reason
-        }
+        inflight.endReason = event.data.reason
       }
     }
   })
@@ -586,8 +591,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
     const callId = request.callId
     record.pendingPermissions += 1
     if (record.pendingPermissions === 1) notifyState(record, "requires_action")
-    return client
-      .request("session/request_permission", {
+    const response = client.request("session/request_permission", {
         sessionId: record.agent.session.id,
         title: request.reason ?? `Allow ${request.toolName}?`,
         subject: { type: "tool_call", toolCall: { toolCallId: callId } },
@@ -595,7 +599,16 @@ export function apply(ctx: Context, config: AcpConfig): void {
           { optionId: "allow-once", name: "Allow once", kind: "allow_once" },
           { optionId: "reject-once", name: "Reject", kind: "reject_once" },
         ],
-      })
+      }, { cancellationSignal: request.signal })
+    // SDK cancellation is cooperative; release local state even if the peer answers late.
+    const signal = request.signal
+    let onAbort: (() => void) | undefined
+    const aborted = new Promise<{ outcome: { outcome: "cancelled" } }>(resolve => {
+      onAbort = () => resolve({ outcome: { outcome: "cancelled" } })
+      if (signal?.aborted) onAbort()
+      else signal?.addEventListener("abort", onAbort, { once: true })
+    })
+    return Promise.race([response, aborted])
       .then(({ outcome }) => {
         if (outcome.outcome === "cancelled") return "cancelled" as const
         return outcome.outcome === "selected" && outcome.optionId === "allow-once"
@@ -603,8 +616,10 @@ export function apply(ctx: Context, config: AcpConfig): void {
           : ("rejected" as const)
       })
       .finally(() => {
+        if (onAbort !== undefined) signal?.removeEventListener("abort", onAbort)
         record.pendingPermissions -= 1
-        if (record.pendingPermissions === 0) notifyState(record, "running")
+        if (record.pendingPermissions === 0 && record.inflight !== undefined && !record.inflight.cancelled
+          && ownedRecord(request.agent) === record && !closed) notifyState(record, "running")
       })
   })
 
@@ -630,6 +645,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
       assertOpen()
       const params: NewSessionRequest = context.params
       validateSessionParams(params)
+      const seed = seedHistoryOf(params._meta)
       const sessionId = SessionId(randomUUID())
       const handle = await agents.create({
         sessionId,
@@ -647,18 +663,27 @@ export function apply(ctx: Context, config: AcpConfig): void {
         pendingPermissions: 0,
         lastState: undefined,
         titled: false,
+        titleAbort: new AbortController(),
         model: config.model ?? "",
         switching: undefined,
       })
       const record = sessions.get(sessionId)
       if (record === undefined) throw internalError("session record vanished during session/new")
-      const seed = seedHistoryOf(params._meta)
-      if (seed.length > 0) {
-        record.agent.inject(
-          createUserMessage({ content: [{ type: "text", text: seedTranscript(seed) }], source: { kind: "user" } }),
-        )
+      try {
+        if (seed.length > 0) {
+          record.agent.inject(
+            createUserMessage({ content: [{ type: "text", text: seedTranscript(seed) }], source: { kind: "user" } }),
+          )
+        }
+        const configOptions = await modelConfigOptions(record)
+        assertOpen()
+        return { sessionId, configOptions }
+      } catch (error: unknown) {
+        sessions.delete(sessionId)
+        record.titleAbort.abort()
+        await record.dispose()
+        throw error
       }
-      return { sessionId, configOptions: await modelConfigOptions(record) }
     })
     // v2 baseline: session/list is part of the `session: {}` surface, no capability key.
     // Headers come from dsh's own persistence (the on-disk format stays private to it);
@@ -692,6 +717,11 @@ export function apply(ctx: Context, config: AcpConfig): void {
         void pending.catch(() => {}).finally(() => resumes.delete(sessionId))
       }
       const acquired = await pending
+      // Each waiter must validate its own cwd, even when acquisition is shared.
+      const storedCwd = acquired.agent.session.header.cwd
+      if (storedCwd !== undefined && storedCwd !== params.cwd) {
+        throw invalidParams(`cwd mismatch: session was created in ${storedCwd}`)
+      }
       // Replay is client-driven: an omitted/null cursor means context-only
       // restore (the client already has the history); { type: "start" } means
       // replay the whole conversation.
@@ -714,8 +744,10 @@ export function apply(ctx: Context, config: AcpConfig): void {
         const value = params.type === "id" && typeof params.value === "string" ? params.value : undefined
         if (value === undefined || value.length === 0) throw invalidParams("model is a select option: send { type: \"id\", value: <model id> }")
         if (record.inflight !== undefined) throw invalidParams("cannot switch model while a prompt is in flight")
-        if (record.switching !== undefined) await record.switching
+        if (record.switching !== undefined) throw invalidParams("a model switch is already in progress")
         if (record.model !== value) {
+          // Handle disposal durably clears the inbox; retain unconsumed seed/input.
+          if (record.agent.inbox.hasPending) throw invalidParams("cannot switch model while input is pending; send a prompt first")
           // In-place options are immutable on a live dsh agent; the sanctioned
           // switch is dispose + resume with new agentOptions — same machinery
           // as session/resume, so history and turn numbering carry over.
@@ -725,23 +757,40 @@ export function apply(ctx: Context, config: AcpConfig): void {
           }
           const previous = record.agent
           const id = previous.session.id
+          const empty = previous.session.snapshotEvents().length === 0
           record.switching = (async () => {
+            const options = { ...(config.provider !== undefined ? { provider: config.provider } : {}), model: value }
+            await ctx.sessions.flush(record.agent.session)
             await record.dispose()
-            const handle = await agents.resume({
-              resumeSessionId: id,
-              agentOptions: { ...(config.provider !== undefined ? { provider: config.provider } : {}), model: value },
-            })
+            if (closed || sessions.get(id) !== record) throw internalError("session closed during model switch")
+            // JSONL persistence is event-driven: an untouched session has no log to resume.
+            const handle = empty
+              ? await agents.create({ sessionId: id, meta: { cwd: previous.session.header.cwd }, agentOptions: options })
+              : await agents.resume({ resumeSessionId: id, agentOptions: options })
+            if (closed || sessions.get(id) !== record) {
+              await handle.dispose()
+              throw internalError("session closed during model switch")
+            }
             record.agent = handle.agent
             record.dispose = () => handle.dispose()
             record.model = value
           })()
           try {
             await record.switching
+          } catch (error: unknown) {
+            // A failed replacement must not leave a retired agent addressable.
+            if (sessions.get(id) === record) sessions.delete(id)
+            record.titleAbort.abort()
+            await record.dispose()
+            if (empty) throw internalError(`model switch failed; empty session is no longer resumable, create a new session: ${errorChain(error)}`)
+            throw internalError(`model switch failed; recover the persisted session with session/resume: ${errorChain(error)}`)
           } finally {
             record.switching = undefined
           }
         }
         const configOptions = await modelConfigOptions(record)
+        assertOpen()
+        if (sessions.get(record.agent.session.id) !== record) throw invalidParams("session closed during model switch")
         notify({ sessionId: record.agent.session.id, update: { sessionUpdate: "config_option_update", configOptions } })
         return { configOptions }
       })
@@ -749,14 +798,17 @@ export function apply(ctx: Context, config: AcpConfig): void {
       assertOpen()
       const params: PromptRequest = context.params
       const record = requireSession(params.sessionId)
-      if (record.switching !== undefined) await record.switching
+      while (record.switching !== undefined) await record.switching.catch(() => {})
+      assertOpen()
+      if (sessions.get(record.agent.session.id) !== record) throw invalidParams("session closed while prompt was waiting")
+      if (record.inflight?.cancelled) throw invalidParams("session cancellation is still in progress")
       if (promptHasUnsupportedContent(params.prompt)) {
         throw invalidParams("only text and resource_link prompt content is supported")
       }
       const text = acpPromptToText(params.prompt)
       if (text.trim().length === 0) {
         // Mirror alwith-cli: an empty prompt reports idle(end_turn) and returns; it is not a protocol error.
-        reportIdle(record, "end_turn")
+        if (record.inflight === undefined) reportIdle(record, "end_turn")
         return {}
       }
 
@@ -792,6 +844,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
           messageId: message.id,
           turn: undefined,
           endReason: undefined,
+          cancelled: false,
         }
         record.inflight = inflight
         try {
@@ -815,7 +868,12 @@ export function apply(ctx: Context, config: AcpConfig): void {
           if (record.inflight !== inflight) return
           record.inflight = undefined
           const end = inflight.endReason
-          const reason: StopReason = end === undefined ? "cancelled" : turnEndToStopReason(end)
+          if (end?.kind === "error") {
+            reportIdle(record, "_error")
+            inflight.reject(internalError(`turn failed: ${end.error.message}`))
+            return
+          }
+          const reason: StopReason = inflight.cancelled || end === undefined ? "cancelled" : turnEndToStopReason(end)
           reportIdle(record, reason)
           inflight.resolve()
         }).catch((error: unknown) => {
@@ -836,11 +894,14 @@ export function apply(ctx: Context, config: AcpConfig): void {
       // agent. The record leaves the table first so a racing frame for this
       // session is dropped rather than reported on a released agent.
       sessions.delete(SessionId(params.sessionId))
+      record.titleAbort.abort()
       record.agent.cancel({ kind: "user" })
       settlePrompt(record)
-      await record.agent.whenIdle()
       try {
-        await ctx.sessions.flush(record.agent.session)
+        await record.switching?.catch(() => {})
+        await record.agent.whenIdle()
+        // A switch flushes before retirement; its retired session is no longer in the store.
+        if (ctx.agents.get(record.agent.id) === record.agent) await ctx.sessions.flush(record.agent.session)
       } catch (error: unknown) {
         throw internalError(`session close failed: ${errorChain(error)}`)
       } finally {
@@ -851,10 +912,9 @@ export function apply(ctx: Context, config: AcpConfig): void {
     .onNotification("session/cancel", context => {
       const params: CancelSessionNotification = context.params
       const record = sessions.get(SessionId(params.sessionId))
-      if (record === undefined) return
+      if (record === undefined || record.inflight === undefined) return
+      record.inflight.cancelled = true
       record.agent.cancel({ kind: "user" })
-      reportIdle(record, "cancelled")
-      settlePrompt(record)
     })
 
   const stream: Stream =
@@ -872,11 +932,15 @@ export function apply(ctx: Context, config: AcpConfig): void {
     const records = [...sessions.values()]
     sessions.clear()
     for (const record of records) {
+      record.titleAbort.abort()
       record.agent.cancel({ kind: "user" })
       settlePrompt(record)
     }
     quiescing = (async () => {
-      const disposals = await Promise.allSettled(records.map(record => record.dispose()))
+      const disposals = await Promise.allSettled(records.map(async record => {
+        await record.switching?.catch(() => {})
+        await record.dispose()
+      }))
       const failures: unknown[] = []
       for (const result of disposals) {
         if (result.status === "rejected") failures.push(result.reason as unknown)

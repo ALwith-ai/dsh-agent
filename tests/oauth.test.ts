@@ -80,6 +80,26 @@ describe("credential plane", () => {
 })
 
 describe("host login interaction", () => {
+  test("an already aborted prompt rejects immediately", async () => {
+    const controller = new AbortController()
+    controller.abort()
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      await expect(Promise.race([
+        hostLoginInteraction().prompt({
+          kind: "text",
+          message: "Paste the redirect URL",
+          signal: controller.signal,
+        }),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error("prompt remained pending")), 100)
+        }),
+      ])).rejects.toThrow("settled out of band")
+    } finally {
+      clearTimeout(timeout)
+    }
+  })
+
   test("a signalled prompt (callback-server race) stays pending, rejects on abort", async () => {
     const controller = new AbortController()
     const pending = hostLoginInteraction().prompt({

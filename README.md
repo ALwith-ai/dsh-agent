@@ -23,6 +23,8 @@ Maintained by [ALwith](https://github.com/ALwith-ai); **ALwith Desktop is its re
 
 ## Run
 
+Requires Bun (validated with 1.4.0); Node.js is not a supported sidecar runtime. In a repository checkout, install the pinned dependency set with `bun install --frozen-lockfile`.
+
 ```sh
 DEEPSEEK_API_KEY=… bun src/main.ts   # ACP v2 server over stdio
 bun test                              # protocol tests with a mock adapter; no real model calls
@@ -30,7 +32,13 @@ bun test                              # protocol tests with a mock adapter; no r
 
 `session/resume` semantics: an omitted `replayFrom` means context-only restore; `{ type: "start" }` replays the whole conversation as `session/update` frames. Session logs live under `$ALWITH_DSH_SESSIONS_ROOT` (default `~/.dsh-agent/sessions`).
 
-Successful turn completion waits for the session durability checkpoint before reporting `idle`. `session/close` drains pending events before releasing the agent. Model and checkpoint failures report `_error`, so hosts can keep failures actionable.
+Turn completion, including cancellation, waits for agent convergence and the session durability checkpoint before reporting `idle`. A tool that ignores cancellation can delay this boundary. Prompts arriving while cancellation settles are rejected; an empty prompt during an active turn does not end it. `session/close` drains pending events before releasing the agent and cancels background title work. Model and checkpoint failures report `_error`, so hosts can keep failures actionable.
+
+Model changes are rejected while a prompt, another switch, or unconsumed input (including injected seed history) is pending. Consume seed history with a prompt before switching. Prompts wait for an existing switch; closing the session during it prevents replacement publication. After a failed switch, persisted sessions can be recovered with `session/resume`; an untouched session without a log requires `session/new`.
+
+Cancel and close intentionally discard pending input, including unconsumed seed history. To re-seed from host-kept history, use `session/new`; `session/resume` does not accept `seedHistory`. Adapters must honor abort signals: otherwise cancellation, close and shutdown can stall. The host may enforce a process deadline, but forced termination can lose unflushed log entries and leave truncated history on resume. Background titles are aborted without delaying close. Standard ACP error codes are retained; human-readable error messages are not a stable parsing API.
+
+From a repository checkout, for local artifact verification run `python3 scripts/verify-package.py`. Bun omits `bun.lock` from the tarball. The verifier explicitly pairs the extracted artifact with the repository lock, requires its bytes to remain unchanged, records its SHA256, installs frozen (network and native build prerequisites may be required), and runs the declared executable through credential-free ACP checks for all five presets. Its watchdogs belong to the verifier, not the bridge. Logs and artifacts are retained at the printed path; install failures remain failures. The `packageManager` field records the validated toolchain; it is not runtime enforcement. This verifies the artifact paired with the repository lock, not a self-contained locked npm package; it does not establish cross-platform or real-provider compatibility. The existing pinned set reports Cordis peer warnings (`4.0.1` versus upstream `^4.0.2`); exercised paths pass, but aligning the whole dependency set requires a separate decision and validation.
 
 ## Plugins
 

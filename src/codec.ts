@@ -16,11 +16,9 @@ export function turnEndToStopReason(reason: TurnEndReason): StopReason {
       return "end_turn"
     case "max-tokens":
       return "max_tokens"
-    // `cancelled` is reserved for explicit session/cancel and disposal, both
-    // settled out of band; a turn aborted by a hook or another owner is
-    // ordinary quiescence and reports end_turn.
     case "aborted":
-      return "end_turn"
+      return reason.reason.kind === "user" || reason.reason.kind === "disposed" ? "cancelled" : "end_turn"
+    // Persistence synthesizes this marker for a crash-orphaned turn.
     case "interrupted":
       return "cancelled"
     case "blocked":

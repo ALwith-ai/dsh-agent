@@ -18,6 +18,28 @@ function chunkText(h: Awaited<ReturnType<typeof makeHarness>>, kind: string): st
 }
 
 describe("session/resume", () => {
+  test("concurrent cold resume validates each caller's cwd", async () => {
+    const root = tempRoot()
+    const first = await makeHarness([textResponse("saved")], { sessionsRoot: root })
+    await first.initialize()
+    const { sessionId } = await first.agent.request("session/new", { cwd: "/tmp" })
+    await first.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "save" }] })
+    await first.dispose()
+    const h = await makeHarness([], { sessionsRoot: root })
+    try {
+      await h.initialize()
+      const results = await Promise.allSettled([
+        h.agent.request("session/resume", { sessionId, cwd: "/tmp" }),
+        h.agent.request("session/resume", { sessionId, cwd: "/private" }),
+      ])
+      expect(results[0]?.status).toBe("fulfilled")
+      expect(results[1]?.status).toBe("rejected")
+      if (results[1]?.status === "rejected") expect(results[1].reason).toMatchObject({ code: -32602 })
+    } finally {
+      await h.dispose()
+    }
+  })
+
   test("cold resume replays history and derives model context from the log", async () => {
     const root = tempRoot()
 

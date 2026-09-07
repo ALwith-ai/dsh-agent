@@ -10,6 +10,35 @@ function titles(h: Awaited<ReturnType<typeof makeHarness>>): Array<string | unde
 }
 
 describe("llm session titles", () => {
+  test("closing the session aborts its background title request", async () => {
+    const h = await makeHarness([], { titleModel: "mock-pro" })
+    const started = Promise.withResolvers<void>()
+    let aborted = false
+    h.adapter.stream = async function* (options) {
+      if (options.model === "mock") {
+        yield* textResponse("hello")
+        return
+      }
+      started.resolve()
+      await new Promise<void>(resolve => {
+        const onAbort = () => { aborted = true; resolve() }
+        if (options.signal?.aborted) onAbort()
+        else options.signal?.addEventListener("abort", onAbort, { once: true })
+      })
+    }
+    try {
+      await h.initialize()
+      const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
+      await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "hello" }] })
+      await started.promise
+      await h.agent.request("session/close", { sessionId })
+      expect(aborted).toBe(true)
+      expect(titles(h)).toEqual(["hello"])
+    } finally {
+      await h.dispose()
+    }
+  })
+
   test("first turn upgrades the deterministic title; the title call targets the title model", async () => {
     const h = await makeHarness([textResponse("hello"), textResponse('"Greeting Session."')], { titleModel: "mock-pro" })
     await h.initialize()

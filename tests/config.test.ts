@@ -22,6 +22,28 @@ function modelOption(configOptions: unknown): ModelOption {
 }
 
 describe("session config options", () => {
+  test("usage reports the selected model's context window after switching", async () => {
+    const h = await makeHarness([textResponse("before"), textResponse("after")], {
+      sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-usage-")),
+    })
+    h.adapter.resolveModel = (provider, model) => Promise.resolve({
+      provider, id: model, name: model,
+      context: { contextWindow: model === "mock" ? 8192 : 32768 },
+    })
+    try {
+      await h.initialize()
+      const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
+      await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "one" }] })
+      await untilFrame(() => h.updates.some(update => update.sessionUpdate === "usage_update"))
+      await h.agent.request("session/set_config_option", { sessionId, configId: "model", type: "id", value: "mock-pro" })
+      await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "two" }] })
+      await untilFrame(() => h.updates.filter(update => update.sessionUpdate === "usage_update").length === 2)
+      expect(h.updates.flatMap(update => update.sessionUpdate === "usage_update" ? [update.size] : [])).toEqual([8192, 32768])
+    } finally {
+      await h.dispose()
+    }
+  })
+
   test("session/new downlinks the model select from the adapter catalog", async () => {
     const h = await makeHarness([])
     await h.initialize()

@@ -71,7 +71,7 @@ async function makeFullHarness(
   const updates: CapturedUpdate[] = []
   const permissionRequests: RequestPermissionRequest[] = []
   const harness = {
-    onPermission: (): RequestPermissionResponse => ({ outcome: { outcome: "cancelled" as const } }),
+    onPermission: (_signal: AbortSignal): RequestPermissionResponse | Promise<RequestPermissionResponse> => ({ outcome: { outcome: "cancelled" as const } }),
   }
 
   await ctx.plugin({
@@ -88,7 +88,7 @@ async function makeFullHarness(
     })
     .onRequest("session/request_permission", context => {
       permissionRequests.push(context.params)
-      return harness.onPermission()
+      return harness.onPermission(context.signal)
     })
     .connect(clientStream)
 
@@ -104,6 +104,46 @@ async function makeFullHarness(
 }
 
 describe("tool surface over the real composition", () => {
+  test("cancel withdraws a pending permission and a late answer cannot revive running", async () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "dsh-agent-permission-cancel-"))
+    const command = "printf unused > marker.txt"
+    const h = await makeFullHarness([
+      toolCallResponse("denied-call", "bash", { command, description: "write a marker" }),
+      toolCallResponse("cancel-call", "bash", {
+        command, description: "write a marker", sandbox_permissions: "workspace-write", justification: "test approval cancellation",
+      }),
+      textResponse("next turn"),
+    ], { permissionMode: "read-only", workspaceRoot })
+    const answer = Promise.withResolvers<RequestPermissionResponse>()
+    const withdrawn = Promise.withResolvers<void>()
+    h.harness.onPermission = signal => {
+      if (signal.aborted) withdrawn.resolve()
+      else signal.addEventListener("abort", () => withdrawn.resolve(), { once: true })
+      return answer.promise
+    }
+    try {
+      await h.initialize()
+      const { sessionId } = await h.agent.request("session/new", { cwd: workspaceRoot })
+      const prompt = h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "ask" }] })
+      await untilFrame(() => h.permissionRequests.length === 1)
+      await h.agent.notify("session/cancel", { sessionId })
+      await withdrawn.promise
+      await prompt
+      await untilFrame(() => h.states().at(-1)?.state === "idle")
+      expect(h.states().at(-1)?.stopReason).toBe("cancelled")
+      const before = h.states().length
+      answer.resolve({ outcome: { outcome: "selected", optionId: "allow-once" } })
+      // A subsequent round trip drains the late response through the transport.
+      await h.agent.request("session/list", {})
+      expect(h.states().length).toBe(before)
+      await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "continue" }] })
+      await untilFrame(() => h.states().at(-1)?.stopReason === "end_turn")
+    } finally {
+      answer.resolve({ outcome: { outcome: "cancelled" } })
+      await h.dispose()
+    }
+  })
+
   test("in-workspace bash runs sandboxed without asking; tool_call_update streams in_progress then completed", async () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "dsh-agent-ws-"))
     const h = await makeFullHarness(

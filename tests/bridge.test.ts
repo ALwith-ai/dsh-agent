@@ -7,6 +7,40 @@ import { describe, expect, test } from "bun:test"
 import { makeHarness, textResponse, untilFrame } from "./harness.ts"
 
 describe("dsh-agent bridge", () => {
+  test("unsupported prompt content is rejected without contacting the model", async () => {
+    const h = await makeHarness([])
+    try {
+      await h.initialize()
+      const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
+      for (const content of [
+        { type: "image", mimeType: "image/png", data: "AA==" },
+        { type: "audio", mimeType: "audio/wav", data: "AA==" },
+        { type: "resource", resource: { uri: "file:///tmp/example", text: "embedded" } },
+      ]) {
+        await expect(h.agent.request("session/prompt", { sessionId, prompt: [content] }))
+          .rejects.toMatchObject({ code: -32602 })
+      }
+      await h.agent.request("session/prompt", { sessionId, prompt: [] })
+      expect(h.adapter.requests).toHaveLength(0)
+    } finally {
+      await h.dispose()
+    }
+  })
+
+  test("invalid seed history leaves no agent or persisted session behind", async () => {
+    const h = await makeHarness([], { sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-invalid-seed-")) })
+    try {
+      await h.initialize()
+      await expect(h.agent.request("session/new", {
+        cwd: "/tmp", _meta: { dsh: { seedHistory: [{ role: "system", text: "x" }] } },
+      })).rejects.toMatchObject({ code: -32602 })
+      expect(h.ctx.agents.list()).toHaveLength(0)
+      expect((await h.agent.request("session/list", {})).sessions).toEqual([])
+    } finally {
+      await h.dispose()
+    }
+  })
+
   test("initialize reports protocolVersion 2 with v2 info", async () => {
     const h = await makeHarness([])
     const result = await h.initialize()

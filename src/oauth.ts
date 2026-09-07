@@ -84,11 +84,12 @@ export function hostLoginInteraction(): AuthorizationInteraction {
           reject(new Error(`interactive prompt not supported in host login flow: ${JSON.stringify(prompt)}`))
           return
         }
-        prompt.signal.addEventListener(
-          "abort",
-          () => reject(new Error(`prompt "${prompt.kind}" cancelled: login settled out of band`)),
-          { once: true }
-        )
+        const onAbort = () => reject(new Error(`prompt "${prompt.kind}" cancelled: login settled out of band`))
+        if (prompt.signal.aborted) {
+          onAbort()
+          return
+        }
+        prompt.signal.addEventListener("abort", onAbort, { once: true })
       }),
   }
 }
