@@ -33,6 +33,8 @@ jobs:
           echo "NPM_DIST_TAG=$tag" >> "$GITHUB_ENV"
           # bun pm pack drops bun.lock from the tarball; npm pack honours "files" (desktop needs the lock for --frozen-lockfile).
           mkdir -p dist && npm pack --ignore-scripts --pack-destination ./dist >/dev/null && mv ./dist/*.tgz ./dist.tgz
+      - name: Require the published dependency lock
+        run: tar -xOf ./dist.tgz package/bun.lock | cmp bun.lock -
       # bun publish cannot do OIDC; npm 11.5+ (bundled with Node 24) can.
       - uses: actions/setup-node@v4
         with:

@@ -11,7 +11,6 @@ import json
 import os
 from pathlib import Path
 import select
-import shutil
 import subprocess
 import tempfile
 import time
@@ -115,26 +114,26 @@ def main():
     output = Path(tempfile.mkdtemp(prefix="dsh-agent-package-", dir=args.output_dir)).resolve()
     print(f"Artifacts: {output}", flush=True)
     repository = Path(__file__).resolve().parents[1]
-    run(["bun", "pm", "pack", "--ignore-scripts", "--destination", str(output)], repository, output / "pack.txt", 30)
+    run(["npm", "pack", "--ignore-scripts", "--pack-destination", str(output)], repository, output / "pack.txt", 30)
     archives = list(output.glob("*.tgz"))
     assert len(archives) == 1, archives
     run(["tar", "-xzf", str(archives[0]), "-C", str(output)], output, output / "extract.txt", 30)
     package = output / "package"
     manifest = json.loads((package / "package.json").read_text())
     assert not (package / "node_modules").exists(), "artifact must install its own dependencies"
-    # Bun pack omits bun.lock. Pair the artifact with the repository's one lock
-    # explicitly: --frozen-lockfile alone does not fail when the lock is absent.
+    # Match Desktop: the published artifact must carry its own lock because
+    # --frozen-lockfile alone does not fail when the lock is absent.
     source_lock = repository / "bun.lock"
     lock_bytes = source_lock.read_bytes()
     lock_sha256 = hashlib.sha256(lock_bytes).hexdigest()
-    shutil.copyfile(source_lock, package / "bun.lock")
-    run(["bun", "install", "--frozen-lockfile"], package, output / "install.txt", args.install_timeout)
+    assert (package / "bun.lock").read_bytes() == lock_bytes, "artifact lock differs from repository"
+    run(["bun", "install", "--production", "--frozen-lockfile"], package, output / "install.txt", args.install_timeout)
     if (package / "bun.lock").read_bytes() != lock_bytes or source_lock.read_bytes() != lock_bytes:
         raise RuntimeError("lockfile bytes changed during frozen installation")
     run(["bun", "pm", "untrusted"], package, output / "untrusted.txt", 30)
     results = [smoke(package, manifest, preset, output)
                for preset in ("standard", "minimal", "anchored", "code", "cordis")]
-    report = {"verification": "artifact paired with repository lock", "lock_sha256": lock_sha256,
+    report = {"verification": "published artifact with bundled lock", "lock_sha256": lock_sha256,
               "lock_unchanged": True, "presets": results}
     (output / "results.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
