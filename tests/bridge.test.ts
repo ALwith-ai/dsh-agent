@@ -57,14 +57,7 @@ describe("dsh-agent bridge", () => {
     await h.agent.request("session/prompt", { sessionId: first.sessionId, prompt: [{ type: "text", text: "a" }] })
     const second = await h.agent.request("session/new", { cwd: "/tmp/other" })
     await h.agent.request("session/prompt", { sessionId: second.sessionId, prompt: [{ type: "text", text: "b" }] })
-    // Persistence materializes a session when its first event batch flushes (a real
-    // signal, polled) — the prompt response does not wait for durability.
-    const listed = async () => (await h.agent.request("session/list", {})).sessions
-    const deadline = Date.now() + 2000
-    while ((await listed()).length < 2) {
-      if (Date.now() > deadline) throw new Error("sessions never materialized in persistence")
-      await new Promise(resolve => setTimeout(resolve, 10))
-    }
+    // A completed prompt has already drained its session to persistence.
     const all = await h.agent.request("session/list", {})
     expect(all.sessions.map(session => session.sessionId)).toEqual([second.sessionId, first.sessionId])
     expect(all.sessions[0]).toMatchObject({ cwd: "/tmp/other" })

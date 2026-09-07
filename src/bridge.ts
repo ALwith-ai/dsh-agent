@@ -71,7 +71,7 @@ import { acpPromptToText, promptHasUnsupportedContent, turnEndToStopReason } fro
 
 export const name = "dsh-agent"
 /** The bridge creates and owns agents (llm serves background session titling); every other concern is carried by the composition. */
-export const inject = ["agents", "llm"]
+export const inject = ["agents", "sessions", "llm"]
 
 /** Wire protocol version; moves in lockstep with the ALwith Desktop client. */
 export const ACP_PROTOCOL_VERSION = 2
@@ -554,7 +554,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
       if (inflight !== undefined && event.type === "turn/end" && inflight.turn === event.data.turn) {
         if (event.data.reason.kind === "error") {
           record.inflight = undefined
-          reportIdle(record, "end_turn")
+          reportIdle(record, "_error")
           inflight.reject(internalError(`turn failed: ${event.data.reason.error.message}`))
         } else {
           inflight.endReason = event.data.reason
@@ -574,7 +574,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
     const inflight = record?.inflight
     if (record === undefined || inflight === undefined || inflight.turn === turn) return
     record.inflight = undefined
-    reportIdle(record, "end_turn")
+    reportIdle(record, "_error")
     inflight.reject(internalError(`turn failed: ${errorChain(error)}`))
   })
 
@@ -807,14 +807,22 @@ export function apply(ctx: Context, config: AcpConfig): void {
         // endReason first; a turnless slot (admission discarded the prompt)
         // stays cancelled. Since v2 the stop reason travels on the idle state
         // frame; the prompt response body is _meta-only.
-        void record.agent.whenIdle().then(() => {
+        void record.agent.whenIdle().then(async () => {
+          if (record.inflight !== inflight) return
+          // Idle is a host-visible durability boundary: the process may exit as
+          // soon as this frame arrives. Drain the official session write path first.
+          await ctx.sessions.flush(record.agent.session)
           if (record.inflight !== inflight) return
           record.inflight = undefined
           const end = inflight.endReason
-          const reason: StopReason =
-            end === undefined ? "cancelled" : end.kind === "max-tokens" ? "end_turn" : turnEndToStopReason(end)
+          const reason: StopReason = end === undefined ? "cancelled" : turnEndToStopReason(end)
           reportIdle(record, reason)
           inflight.resolve()
+        }).catch((error: unknown) => {
+          if (record.inflight !== inflight) return
+          record.inflight = undefined
+          reportIdle(record, "_error")
+          inflight.reject(internalError(`turn settlement failed: ${errorChain(error)}`))
         })
       })
       // First turn settled: upgrade the deterministic title in the background.
@@ -830,7 +838,14 @@ export function apply(ctx: Context, config: AcpConfig): void {
       sessions.delete(SessionId(params.sessionId))
       record.agent.cancel({ kind: "user" })
       settlePrompt(record)
-      await record.dispose()
+      await record.agent.whenIdle()
+      try {
+        await ctx.sessions.flush(record.agent.session)
+      } catch (error: unknown) {
+        throw internalError(`session close failed: ${errorChain(error)}`)
+      } finally {
+        await record.dispose()
+      }
       return {}
     })
     .onNotification("session/cancel", context => {

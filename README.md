@@ -30,6 +30,8 @@ bun test                              # protocol tests with a mock adapter; no r
 
 `session/resume` semantics: an omitted `replayFrom` means context-only restore; `{ type: "start" }` replays the whole conversation as `session/update` frames. Session logs live under `$ALWITH_DSH_SESSIONS_ROOT` (default `~/.dsh-agent/sessions`).
 
+Successful turn completion waits for the session durability checkpoint before reporting `idle`. `session/close` drains pending events before releasing the agent. Model and checkpoint failures report `_error`, so hosts can keep failures actionable.
+
 ## Plugins
 
 The composition per preset is fixed here in code (deterministic), but users keep dsh's two degrees of freedom — per-plugin enable/disable and per-plugin config — through an overrides file (`$ALWITH_DSH_PLUGINS_FILE`, default `~/.dsh-agent/plugins.json`), read at spawn so changes apply to new sessions:

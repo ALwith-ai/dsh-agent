@@ -30,6 +30,8 @@ bun test                              # mock 适配器协议测试,不打真模�
 
 `session/resume` 语义:`replayFrom` 省略 = 只恢复上下文;`{ type: "start" }` = 整段对话重放为 `session/update` 帧。会话日志在 `$ALWITH_DSH_SESSIONS_ROOT`(默认 `~/.dsh-agent/sessions`)。
 
+成功轮次在报告 `idle` 前等待会话持久化检查点。`session/close` 在释放 Agent 前排空待写事件。模型与检查点失败报告 `_error`，宿主据此保持失败待处理。
+
 ## 插件
 
 各预设的组合面在代码里写死(确定性),但用户保有 dsh 的两个自由度——逐插件开关与逐插件配置——经覆盖文件(`$ALWITH_DSH_PLUGINS_FILE`,默认 `~/.dsh-agent/plugins.json`)生效;spawn 时读取,改动作用于新会话:
