@@ -358,18 +358,35 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
   }
 
   /** `<id>.jsonl` under any project directory; ids are UUIDs, so at most one match exists. */
+  /**
+   * A record id can sit under more than one project key: the CLI's cross-project `--resume` leaves the
+   * same session in the old and the new cwd's directory. The most recently written file is the one
+   * being continued; the others are shadowed and reported, never silently merged.
+   */
   private async findRecord(id: SessionId, signal?: AbortSignal): Promise<string | undefined> {
+    const candidates: Array<{ path: string; mtimeMs: number }> = []
     for (const project of await this.listProjectDirs(signal)) {
       signal?.throwIfAborted()
       const path = join(project, recordFileName(id))
       try {
-        await stat(path)
-        return path
+        candidates.push({ path, mtimeMs: (await stat(path)).mtimeMs })
       } catch (error: unknown) {
         if (!isENOENT(error)) throw error
       }
     }
-    return undefined
+    return this.newest(id, candidates)?.path
+  }
+
+  private newest<T extends { path: string; mtimeMs: number }>(id: SessionId, candidates: readonly T[]): T | undefined {
+    if (candidates.length === 0) return undefined
+    const sorted = [...candidates].sort((a, b) => b.mtimeMs - a.mtimeMs)
+    const [winner, ...shadowed] = sorted
+    if (shadowed.length > 0) {
+      this.ctx.logger.warn(
+        `${this.name}: record "${id}" exists under ${sorted.length} project directories; using the most recently written ${winner!.path}, shadowing ${shadowed.map(entry => entry.path).join(", ")}`,
+      )
+    }
+    return winner
   }
 
   private async listProjectDirs(signal?: AbortSignal): Promise<string[]> {
@@ -385,8 +402,7 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
   }
 
   private async listArtifacts(signal?: AbortSignal): Promise<Array<{ header: SessionHeader; path: string }>> {
-    const artifacts: Array<{ header: SessionHeader; path: string }> = []
-    const ids = new Set<SessionId>()
+    const found = new Map<SessionId, Array<{ header: SessionHeader; path: string; mtimeMs: number }>>()
     for (const project of await this.listProjectDirs(signal)) {
       signal?.throwIfAborted()
       let entries: string[]
@@ -403,10 +419,16 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
         const id = makeSessionId(recordIdFromFileName(entry))
         const header = await this.probeHeader(path, id, signal)
         if (header === undefined) continue
-        if (ids.has(header.id)) throw new Error(`ALwith record id "${header.id}" appears in multiple project directories`)
-        ids.add(header.id)
-        artifacts.push({ header, path })
+        const { mtimeMs } = await stat(path)
+        const candidates = found.get(header.id) ?? []
+        candidates.push({ header, path, mtimeMs })
+        found.set(header.id, candidates)
       }
+    }
+    const artifacts: Array<{ header: SessionHeader; path: string }> = []
+    for (const [id, candidates] of found) {
+      const winner = this.newest(id, candidates)!
+      artifacts.push({ header: winner.header, path: winner.path })
     }
     return artifacts
   }

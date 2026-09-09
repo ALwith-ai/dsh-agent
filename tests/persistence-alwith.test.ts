@@ -303,3 +303,31 @@ describe("one record, whole-line co-writers", () => {
     }
   })
 })
+
+describe("one record id under two project directories", () => {
+  test("list and resume use the most recently written file and report the shadowed one", async () => {
+    const dir = await freshRoot("dsh-alwith-shadow-")
+    try {
+      const id = SessionId("11111111-2222-4333-8444-555555555555")
+      const older = join(dir, projectKey("/w/old"), `${id}.jsonl`)
+      const newer = join(dir, projectKey("/w/new"), `${id}.jsonl`)
+      await mkdir(join(dir, projectKey("/w/old")), { recursive: true })
+      await mkdir(join(dir, projectKey("/w/new")), { recursive: true })
+      await writeFile(older, cliRecord(id, "/w/old"))
+      await new Promise(resolve => setTimeout(resolve, 20))
+      await writeFile(newer, cliRecord(id, "/w/new"))
+      const warnings: string[] = []
+      const ctx = new Context()
+      ctx.logger.warn = ((message: unknown) => warnings.push(String(message))) as typeof ctx.logger.warn
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(AlwithSessionPersistence, { projectsDir: dir })
+      const provider = ctx.get("sessionPersistence")!
+      const listed = await provider.list()
+      expect(listed.map(header => [header.id, header.cwd])).toEqual([[id, "/w/new"]])
+      expect((await provider.readRaw(id))?.meta.cwd).toBe("/w/new")
+      expect(warnings.some(message => message.includes("shadowing") && message.includes(older))).toBe(true)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
