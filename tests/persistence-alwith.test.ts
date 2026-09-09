@@ -273,3 +273,33 @@ describe("records written by the ALwith CLI", () => {
     }
   })
 })
+
+describe("one record, whole-line co-writers", () => {
+  test("a failed append rolls back only this writer's partial bytes; a platform line after the prefix is kept and reported", async () => {
+    const dir = await freshRoot("dsh-alwith-rollback-")
+    try {
+      const ctx = new Context()
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(AlwithSessionPersistence, { projectsDir: dir })
+      const provider = ctx.get("sessionPersistence") as unknown as {
+        rollback(path: string, size: number, attempted: string): Promise<void>
+      }
+      const path = join(dir, "record.jsonl")
+      const prefix = '{"type":"alwith","kind":"header","version":1}\n'
+      const attempted = '{"type":"alwith","kind":"event","seq":0}\n'
+
+      // Our own torn write after the confirmed prefix: cut back to the prefix.
+      await writeFile(path, prefix + attempted.slice(0, 12))
+      await provider.rollback(path, Buffer.byteLength(prefix), attempted)
+      expect(await readFile(path, "utf8")).toBe(prefix)
+
+      // Someone else's whole line (desktop custom-title) after the prefix: not ours, must survive.
+      const platformLine = '{"type":"custom-title","customTitle":"renamed"}\n'
+      await writeFile(path, prefix + platformLine)
+      await expect(provider.rollback(path, Buffer.byteLength(prefix), attempted)).rejects.toThrow("did not write")
+      expect(await readFile(path, "utf8")).toBe(prefix + platformLine)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})

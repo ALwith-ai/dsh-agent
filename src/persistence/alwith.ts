@@ -300,7 +300,7 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
       } catch (error) {
         try {
           await close()
-          await this.rollback(path, before)
+          await this.rollback(path, before, content)
         } catch (rollbackError) {
           throw new AggregateError([error, rollbackError], `failed to roll back append to "${path}"`)
         }
@@ -311,9 +311,23 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
     }
   }
 
-  private async rollback(path: string, size: number): Promise<void> {
+  /**
+   * Cut a failed append back to the confirmed prefix — but only our own partial bytes. The platform
+   * appends whole metadata lines (`custom-title`, envelope) to a record it does not own; those bytes are
+   * never ours to remove, so anything after the prefix that is not a prefix of what we tried to write
+   * stays, and the failure is reported instead of silently truncating another writer's line.
+   */
+  private async rollback(path: string, size: number, attempted: string): Promise<void> {
     const handle = await open(path, "r+")
     try {
+      const { size: now } = await handle.stat()
+      if (now < size) throw new Error(`"${path}" is shorter than its confirmed prefix (${now} < ${size} bytes)`)
+      const tail = Buffer.alloc(now - size)
+      if (tail.length > 0) await handle.read(tail, 0, tail.length, size)
+      if (!tail.equals(Buffer.from(attempted).subarray(0, tail.length))) {
+        throw new Error(`"${path}" has ${tail.length} bytes after the confirmed prefix that this writer did not write; not truncating`)
+      }
+      if (now === size) return
       await handle.truncate(size)
       await handle.sync()
     } finally {
