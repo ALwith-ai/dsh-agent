@@ -1,3 +1,4 @@
+import { createUserMessage } from "@deepseek-ai/dsh-llm"
 /** Failure and concurrency boundaries for bridge-owned agents. */
 import { expect, test } from "bun:test"
 import { existsSync, mkdtempSync, renameSync } from "node:fs"
@@ -71,15 +72,17 @@ test("a fresh session can switch models before its first prompt", async () => {
   }
 })
 
-test("a model switch refuses unconsumed seed history instead of discarding it", async () => {
+test("a model switch refuses unconsumed injected input instead of discarding it", async () => {
   const h = await makeHarness([textResponse("ready")], {
     sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-seeded-switch-")),
   })
   try {
     await h.initialize()
-    const { sessionId } = await h.agent.request("session/new", {
-      cwd: "/tmp", _meta: { dsh: { seedHistory: [{ role: "user", text: "keep this history" }] } },
-    })
+    const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
+    // Unconsumed input in the agent inbox (what a plugin or the host injects between turns).
+    h.ctx.agents.get(sessionId as never)!.inject(
+      createUserMessage({ content: [{ type: "text", text: "keep this history" }], source: { kind: "user" } }),
+    )
     await expect(h.agent.request("session/set_config_option", { sessionId, configId: "model", type: "id", value: "mock-pro" }))
       .rejects.toMatchObject({ code: -32602 })
     await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "continue" }] })

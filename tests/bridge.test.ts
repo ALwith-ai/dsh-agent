@@ -27,20 +27,6 @@ describe("dsh-agent bridge", () => {
     }
   })
 
-  test("invalid seed history leaves no agent or persisted session behind", async () => {
-    const h = await makeHarness([], { sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-invalid-seed-")) })
-    try {
-      await h.initialize()
-      await expect(h.agent.request("session/new", {
-        cwd: "/tmp", _meta: { dsh: { seedHistory: [{ role: "system", text: "x" }] } },
-      })).rejects.toMatchObject({ code: -32602 })
-      expect(h.ctx.agents.list()).toHaveLength(0)
-      expect((await h.agent.request("session/list", {})).sessions).toEqual([])
-    } finally {
-      await h.dispose()
-    }
-  })
-
   test("initialize reports protocolVersion 2 with v2 info", async () => {
     const h = await makeHarness([])
     const result = await h.initialize()
@@ -54,32 +40,6 @@ describe("dsh-agent bridge", () => {
     const result = await h.initialize()
     expect(result.info.version).toMatch(/^\d+\.\d+\.\d+/)
     expect(result.info.version).not.toBe("0.1.0")
-  })
-
-  test("session/new with _meta.dsh.seedHistory injects the prior conversation before the first turn", async () => {
-    let seen: string[] = []
-    const h = await makeHarness([
-      options => {
-        seen = options.messages.flatMap(message =>
-          (Array.isArray(message.content) ? message.content : []).flatMap(block =>
-            block.type === "text" ? [block.text] : [],
-          ),
-        )
-        return textResponse("ok")
-      },
-    ])
-    const init = await h.initialize()
-    expect((init.capabilities?._meta as { dsh?: { seedHistory?: boolean } })?.dsh?.seedHistory).toBe(true)
-    const { sessionId } = await h.agent.request("session/new", {
-      cwd: "/tmp",
-      _meta: { dsh: { seedHistory: [{ role: "user", text: "hello" }, { role: "assistant", text: "hi there" }] } },
-    })
-    await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "continue" }] })
-    expect(seen.some(text => text.includes("<prior_conversation>") && text.includes("User: hello") && text.includes("Assistant: hi there"))).toBe(true)
-    await expect(
-      h.agent.request("session/new", { cwd: "/tmp", _meta: { dsh: { seedHistory: [{ role: "system", text: "x" }] } } }),
-    ).rejects.toMatchObject({ code: -32602 })
-    await h.dispose()
   })
 
   test("session/list is baseline: lists persisted sessions newest first, narrowed by cwd", async () => {

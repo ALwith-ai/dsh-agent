@@ -13,6 +13,7 @@ import { LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type Strea
 import AgentLoop from "@deepseek-ai/dsh-agent-loop"
 import SessionProjectionRegistry from "@deepseek-ai/dsh-session-projection"
 import JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl"
+import AlwithSessionPersistence from "../src/persistence/alwith.ts"
 import { mountAgentLoopTestDependencies } from "@deepseek-ai/dsh-agent-loop-testkit"
 import * as Bridge from "../src/bridge.ts"
 
@@ -72,6 +73,8 @@ export async function untilFrame(condition: () => boolean, timeoutMs = 1000): Pr
 export interface HarnessOptions {
   /** JSONL session-log root; absent means no persistence (resume fails loud). */
   sessionsRoot?: string
+  /** Mount the ALwith record provider instead of dsh's JSONL backend. */
+  persistence?: { kind: "alwith"; projectsDir: string }
   /** Enables background LLM session titles (absent keeps the deterministic truncation). */
   titleModel?: string
 }
@@ -83,7 +86,9 @@ export async function makeHarness(script: ScriptEntry[], options: HarnessOptions
   // agent-loop injects sessionProjections since 0.1.2; the testkit does not mount it
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
-  if (options.sessionsRoot !== undefined) {
+  if (options.persistence !== undefined) {
+    await ctx.plugin(AlwithSessionPersistence, { projectsDir: options.persistence.projectsDir, providerId: "mock" })
+  } else if (options.sessionsRoot !== undefined) {
     await ctx.plugin(JsonlSessionPersistence, { root: options.sessionsRoot })
   }
   ctx.llm.registerAdapter(["mock"], adapter)

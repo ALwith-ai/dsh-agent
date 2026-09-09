@@ -27,6 +27,7 @@ import ToolRuntime from "@deepseek-ai/dsh-tools";
 import AgentRegistry from "@deepseek-ai/dsh-agent";
 import AgentLoop from "@deepseek-ai/dsh-agent-loop";
 import JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl";
+import AlwithSessionPersistence from "./persistence/alwith.ts";
 import LocalSubprocessRuntime from "@deepseek-ai/dsh-subprocess-local";
 import LocalSandboxProvider from "@deepseek-ai/dsh-sandbox-local";
 import SandboxPolicyService from "@deepseek-ai/dsh-sandbox-policy";
@@ -96,9 +97,23 @@ export const HARNESS_PRESETS: readonly HarnessPreset[] = [
   "cordis",
 ];
 
+export type PersistenceKind = "dsh" | "alwith";
+
 export interface ResolvedComposeOptions {
-  /** Absent means no persistence — session/resume then fails loud. */
+  /**
+   * Which `ctx.sessionPersistence` provider to mount; exactly one per process.
+   * `dsh` (default) is the upstream JSONL backend under `sessionsRoot`; `alwith`
+   * stores sessions as ALwith session records under `projectsDir`.
+   */
+  persistence?: PersistenceKind;
+  /** `dsh` provider root. Absent (with `persistence` unset) means no persistence — session/resume then fails loud. */
   sessionsRoot?: string;
+  /** `alwith` provider root: the ALwith session library (`~/.alwith/projects`). */
+  projectsDir?: string;
+  /** Host provider identity stamped on records the `alwith` provider writes. */
+  providerId?: string;
+  /** This package's version, recorded as the writer in new ALwith records. */
+  writerVersion?: string;
   workspaceRoot: string;
   permissionMode: PermissionMode;
   preset: HarnessPreset;
@@ -287,7 +302,29 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       ),
     );
   }
-  if (options.sessionsRoot !== undefined) {
+  const persistence = options.persistence ?? (options.sessionsRoot === undefined ? undefined : "dsh");
+  if (persistence === "alwith") {
+    if (options.projectsDir === undefined) {
+      throw new Error("persistence \"alwith\" requires projectsDir (the ALwith session library root)");
+    }
+    rows.push(
+      core(
+        "session-persistence-alwith",
+        "@alwith-ai/dsh-agent/persistence/alwith",
+        "ALwith session records (session/resume source; Claude Code compatible JSONL)",
+        async (ctx, config) =>
+          ctx.plugin(AlwithSessionPersistence, config as never),
+        {
+          projectsDir: options.projectsDir,
+          ...(options.providerId === undefined ? {} : { providerId: options.providerId }),
+          ...(options.writerVersion === undefined ? {} : { writerVersion: options.writerVersion }),
+        },
+      ),
+    );
+  } else if (persistence === "dsh") {
+    if (options.sessionsRoot === undefined) {
+      throw new Error("persistence \"dsh\" requires sessionsRoot");
+    }
     rows.push(
       core(
         "session-persistence-jsonl",

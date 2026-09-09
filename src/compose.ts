@@ -18,9 +18,10 @@ import {
   type PluginOverrides,
   pluginRows,
   resolvePlugins,
+  type PersistenceKind,
 } from "./plugins.ts"
 
-export type { HarnessPreset, PermissionMode }
+export type { HarnessPreset, PermissionMode, PersistenceKind }
 
 export interface ComposeOptions {
   /**
@@ -28,6 +29,14 @@ export interface ComposeOptions {
    * session/resume then fails loud (`session persistence is not configured`).
    */
   sessionsRoot?: string
+  /** Which persistence provider to mount: `dsh` (upstream JSONL under sessionsRoot, default) or `alwith`. */
+  persistence?: PersistenceKind
+  /** `alwith` provider root: the ALwith session library. */
+  projectsDir?: string
+  /** Host provider identity for ALwith records. */
+  providerId?: string
+  /** Writer version recorded in new ALwith records. */
+  writerVersion?: string
   /** Sandbox workspace root (writes allowed under it in workspace-write mode). */
   workspaceRoot?: string
   /** Deployment permission mode; mirrors dsh's DSH_PERMISSION_MODE. */
@@ -45,6 +54,10 @@ export interface ComposeOptions {
 export async function composeRuntime(options: ComposeOptions = {}): Promise<Context> {
   const rows = pluginRows({
     sessionsRoot: options.sessionsRoot,
+    persistence: options.persistence,
+    projectsDir: options.projectsDir,
+    providerId: options.providerId,
+    writerVersion: options.writerVersion,
     workspaceRoot: options.workspaceRoot ?? process.cwd(),
     permissionMode: options.permissionMode ?? "workspace-write",
     preset: options.preset ?? "standard",

@@ -279,14 +279,24 @@ export function apply(ctx: Context, config: AcpConfig): void {
     }
   }
 
-  /** Map a tool result's model-facing blocks to v2 tool-call content (text verbatim, images as placeholders). */
+  /**
+   * Images enter a dsh session only through a mounted AttachmentStore (`ctx.attachments`: the
+   * read-image tool exists only while one is mounted, prompt images are refused at the entry).
+   * This composition mounts none, so an image block is an invariant violation, not a case to
+   * paraphrase: the ALwith record must carry everything the model saw, and a placeholder would
+   * silently drop it. When a store is mounted, this is where bytes get read into the frame.
+   */
+  const noImageAttachments = (attachmentId: string): Error =>
+    new Error(`acp: image attachment ${attachmentId} cannot be carried: no attachment store is mounted in this composition`)
+
+  /** Map a tool result's model-facing blocks to v2 tool-call content (text verbatim). */
   const toolResultContent = (blocks: readonly DshContentBlock[]): ToolCallContent[] => {
     const content: ToolCallContent[] = []
     for (const block of blocks) {
       if (block.type === "text" && block.text.length > 0) {
         content.push({ type: "content", content: { type: "text", text: block.text } })
       } else if (block.type === "image") {
-        content.push({ type: "content", content: { type: "text", text: `[image attachment ${block.attachment.attachmentId}]` } })
+        throw noImageAttachments(block.attachment.attachmentId)
       }
     }
     return content
@@ -421,8 +431,8 @@ export function apply(ctx: Context, config: AcpConfig): void {
   /**
    * Replay the whole conversation as session/update frames (the replayFrom
    * { type: "start" } cursor). Committed messages only: user text as
-   * user_message_chunk, assistant text/reasoning as message/thought chunks,
-   * images as placeholders — mirroring the live-stream vocabulary.
+   * user_message_chunk, assistant text/reasoning as message/thought chunks —
+   * mirroring the live-stream vocabulary.
    */
   const replayHistory = (record: SessionRecord): void => {
     const sessionId = record.agent.session.id
@@ -455,14 +465,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
               },
             })
           } else if (block.type === "image") {
-            notify({
-              sessionId,
-              update: {
-                sessionUpdate: "agent_message_chunk",
-                messageId: MessageId(message.id),
-                content: { type: "text", text: `[image attachment ${block.attachment.attachmentId}]` },
-              },
-            })
+            throw noImageAttachments(block.attachment.attachmentId)
           }
         }
       }
@@ -470,8 +473,8 @@ export function apply(ctx: Context, config: AcpConfig): void {
   }
 
   // Token-level streaming: text-delta → agent_message_chunk, reasoning-delta →
-  // agent_thought_chunk. Committed assistant/message text is NOT re-emitted
-  // (only image placeholders), or the client would render it twice.
+  // agent_thought_chunk. Committed assistant/message text is NOT re-emitted,
+  // or the client would render it twice.
   // Note: chunks of a retried model request have already streamed out — the
   // same live-stream behavior CLI frontends exhibit.
   ctx.on("session/event", (session, event: SessionEvent) => {
@@ -502,17 +505,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
         }
       } else if (event.type === "assistant/message") {
         for (const block of event.data.message.content) {
-          if (block.type === "image") {
-            notify({
-              sessionId: record.agent.session.id,
-              update: {
-                sessionUpdate: "agent_message_chunk",
-                messageId: MessageId(event.data.message.id),
-                content: { type: "text", text: `[image attachment ${block.attachment.attachmentId}]` },
-                _meta: turnMeta(record),
-              },
-            })
-          }
+          if (block.type === "image") throw noImageAttachments(block.attachment.attachmentId)
         }
         emitUsage(record, event.data.usage)
       } else if (event.type === "tool/call") {
@@ -632,20 +625,15 @@ export function apply(ctx: Context, config: AcpConfig): void {
         protocolVersion: ACP_PROTOCOL_VERSION,
         info: { name: "dsh-agent", title: "ALwith dsh bridge", version: packageJson.version },
         authMethods: [],
-        capabilities: {
-          session: { prompt: {} },
-          // seedHistory: a host that keeps its own transcript can continue it here —
-          // `session/new` with `_meta.dsh.seedHistory: [{role, text}]` injects it as
-          // model-facing context (agent.inject) before the first turn.
-          _meta: { dsh: { seedHistory: true } },
-        },
+        // No private extensions: history continuation is standard `session/resume`, served by the
+        // mounted persistence provider (the ALwith record library when the host selects it).
+        capabilities: { session: { prompt: {} } },
       }
     })
     .onRequest("session/new", async (context): Promise<NewSessionResponse> => {
       assertOpen()
       const params: NewSessionRequest = context.params
       validateSessionParams(params)
-      const seed = seedHistoryOf(params._meta)
       const sessionId = SessionId(randomUUID())
       const handle = await agents.create({
         sessionId,
@@ -670,11 +658,6 @@ export function apply(ctx: Context, config: AcpConfig): void {
       const record = sessions.get(sessionId)
       if (record === undefined) throw internalError("session record vanished during session/new")
       try {
-        if (seed.length > 0) {
-          record.agent.inject(
-            createUserMessage({ content: [{ type: "text", text: seedTranscript(seed) }], source: { kind: "user" } }),
-          )
-        }
         const configOptions = await modelConfigOptions(record)
         assertOpen()
         return { sessionId, configOptions }
@@ -1016,28 +999,3 @@ function validateSessionParams(params: NewSessionRequest): void {
   }
 }
 
-export interface SeedMessage {
-  role: "user" | "assistant"
-  text: string
-}
-
-/** `session/new` `_meta.dsh.seedHistory`: prior conversation the host kept, to inject as model-facing context. */
-export function seedHistoryOf(meta: NewSessionRequest["_meta"]): SeedMessage[] {
-  const raw = (meta as { dsh?: { seedHistory?: unknown } } | null | undefined)?.dsh?.seedHistory
-  if (raw === undefined || raw === null) return []
-  if (!Array.isArray(raw)) throw invalidParams("seedHistory must be an array of {role, text}")
-  return raw.map((entry, index) => {
-    const role = (entry as { role?: unknown })?.role
-    const text = (entry as { text?: unknown })?.text
-    if ((role !== "user" && role !== "assistant") || typeof text !== "string") {
-      throw invalidParams(`seedHistory[${index}] must be {role: "user" | "assistant", text: string}`)
-    }
-    return { role, text }
-  })
-}
-
-/** dsh injects one user-authored context message; the transcript is framed so the model reads it as history. */
-export function seedTranscript(seed: readonly SeedMessage[]): string {
-  const lines = seed.map(message => `${message.role === "user" ? "User" : "Assistant"}: ${message.text}`)
-  return `<prior_conversation>\n${lines.join("\n\n")}\n</prior_conversation>`
-}

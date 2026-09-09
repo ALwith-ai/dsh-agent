@@ -8,6 +8,7 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { credentialKey } from "@deepseek-ai/dsh-credentials"
+import packageJson from "../package.json" with { type: "json" }
 import { composeRuntime } from "./compose.ts"
 import { defaultCredentialsFile } from "./oauth.ts"
 import { loadPluginOverrides } from "./plugins.ts"
@@ -44,6 +45,17 @@ async function startServer(): Promise<void> {
   // Session logs live under the sidecar's own home by default; the host
   // (ALwith Desktop) overrides this to its managed location.
   const sessionsRoot = process.env.ALWITH_DSH_SESSIONS_ROOT ?? join(homedir(), ".dsh-agent", "sessions")
+  // Exactly one persistence provider per process. Standalone runs keep dsh's own
+  // JSONL logs; ALwith Desktop selects the ALwith session library explicitly.
+  const rawPersistence = process.env.ALWITH_DSH_PERSISTENCE ?? "dsh"
+  if (rawPersistence !== "dsh" && rawPersistence !== "alwith") {
+    throw new Error(`unsupported ALWITH_DSH_PERSISTENCE "${rawPersistence}": expected dsh or alwith`)
+  }
+  const persistence = rawPersistence
+  const projectsDir = process.env.ALWITH_DSH_PROJECTS_DIR
+  if (persistence === "alwith" && projectsDir === undefined) {
+    throw new Error("ALWITH_DSH_PERSISTENCE=alwith requires ALWITH_DSH_PROJECTS_DIR (the ALwith session library root)")
+  }
   // The host spawns one sidecar per session and pins the sandbox workspace to
   // that session's cwd; standalone runs default to the process cwd.
   const workspaceRoot = process.env.ALWITH_DSH_WORKSPACE_ROOT ?? process.cwd()
@@ -76,6 +88,10 @@ async function startServer(): Promise<void> {
 
   const ctx = await composeRuntime({
     sessionsRoot,
+    persistence,
+    projectsDir,
+    providerId,
+    writerVersion: packageJson.version,
     workspaceRoot,
     permissionMode,
     preset: rawPreset as (typeof PRESETS)[number],
