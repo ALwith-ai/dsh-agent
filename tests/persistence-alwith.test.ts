@@ -331,3 +331,35 @@ describe("one record id under two project directories", () => {
     }
   })
 })
+
+describe("session/resume cwd spelling", () => {
+  test("an alias of the recorded cwd (macOS /var → /private/var) resumes; a different directory is refused", async () => {
+    const dir = await freshRoot("dsh-alwith-cwd-alias-")
+    const alias = await mkdtemp(join(tmpdir(), "dsh-cwd-alias-"))
+    const { realpath } = await import("node:fs/promises")
+    const real = await realpath(alias)
+    try {
+      const h = await makeHarness([textResponse("hi")], { persistence: { kind: "alwith", projectsDir: dir } })
+      try {
+        await h.initialize()
+        const created = await h.agent.request("session/new", { cwd: real })
+        await h.agent.request("session/prompt", { sessionId: created.sessionId, prompt: [{ type: "text", text: "x" }] })
+        await untilFrame(() => h.states().at(-1)?.state === "idle")
+        await h.ctx.sessions.flush(h.ctx.sessions.get(SessionId(created.sessionId))!)
+        await h.agent.request("session/close", { sessionId: created.sessionId })
+        if (alias !== real) {
+          await h.agent.request("session/resume", { sessionId: created.sessionId, cwd: alias, replayFrom: null })
+          await h.agent.request("session/close", { sessionId: created.sessionId })
+        }
+        await expect(
+          h.agent.request("session/resume", { sessionId: created.sessionId, cwd: join(real, "elsewhere"), replayFrom: null }),
+        ).rejects.toMatchObject({ message: expect.stringContaining("cwd mismatch") })
+      } finally {
+        h.dispose()
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+      await rm(alias, { recursive: true, force: true })
+    }
+  })
+})

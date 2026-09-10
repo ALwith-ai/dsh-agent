@@ -23,6 +23,7 @@
 import type { Context } from "@deepseek-ai/cordis"
 import packageJson from "../package.json" with { type: "json" }
 import { randomUUID } from "node:crypto"
+import { realpathSync } from "node:fs"
 import { isAbsolute } from "node:path"
 import { Readable, Writable } from "node:stream"
 import Schema from "@deepseek-ai/schemastery"
@@ -379,12 +380,29 @@ export function apply(ctx: Context, config: AcpConfig): void {
     inflight.resolve()
   }
 
+  /**
+   * Two spellings of one directory are the same cwd: macOS aliases /var to /private/var and the
+   * ALwith CLI records its process cwd (realpath) while clients pass the path they were given.
+   * A spelling that no longer exists on disk is compared as written.
+   */
+  const sameDirectory = (stored: string, requested: string): boolean => {
+    if (stored === requested) return true
+    const canonical = (path: string): string => {
+      try {
+        return realpathSync(path)
+      } catch {
+        return path
+      }
+    }
+    return canonical(stored) === canonical(requested)
+  }
+
   /** Live-first session acquisition for resume: reuse a bridge-owned live agent, else cold-resume from persistence. */
   const acquireSession = async (sessionId: SessionId, cwd: string): Promise<SessionRecord> => {
     const live = sessions.get(sessionId)
     if (live !== undefined) {
       const storedCwd = live.agent.session.header.cwd
-      if (storedCwd !== undefined && storedCwd !== cwd) {
+      if (storedCwd !== undefined && !sameDirectory(storedCwd, cwd)) {
         throw invalidParams(`cwd mismatch: session was created in ${storedCwd}`)
       }
       return live
@@ -405,7 +423,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
     } catch (error: unknown) {
       throw invalidParams(`unknown session: ${sessionId} (${errorChain(error)})`)
     }
-    if (inspection.meta.cwd !== undefined && inspection.meta.cwd !== cwd) {
+    if (inspection.meta.cwd !== undefined && !sameDirectory(inspection.meta.cwd, cwd)) {
       throw invalidParams(`cwd mismatch: session was created in ${inspection.meta.cwd}`)
     }
     const handle = await agents.resume({ resumeSessionId: sessionId, agentOptions: agentOptions(config) })
@@ -702,7 +720,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
       const acquired = await pending
       // Each waiter must validate its own cwd, even when acquisition is shared.
       const storedCwd = acquired.agent.session.header.cwd
-      if (storedCwd !== undefined && storedCwd !== params.cwd) {
+      if (storedCwd !== undefined && !sameDirectory(storedCwd, params.cwd)) {
         throw invalidParams(`cwd mismatch: session was created in ${storedCwd}`)
       }
       // Replay is client-driven: an omitted/null cursor means context-only
