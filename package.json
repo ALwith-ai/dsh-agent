@@ -113,7 +113,7 @@
     "@deepseek-ai/dsh-web": "0.1.5-rc.2",
     "@deepseek-ai/dsh-web-search-deepseek": "0.1.5-rc.2",
     "@deepseek-ai/schemastery": "3.18.1",
-    "@nyssance/dsh-code-runtime-worker-thread": "0.1.2-rc.1.nyssance.1",
+    "@nyssance/dsh-code-runtime-worker-thread": "0.1.5-rc.2.nyssance.1",
     "amaro": "1.1.11"
   },
   "devDependencies": {

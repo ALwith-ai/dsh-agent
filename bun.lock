@@ -92,7 +92,7 @@
         "@deepseek-ai/dsh-web": "0.1.5-rc.2",
         "@deepseek-ai/dsh-web-search-deepseek": "0.1.5-rc.2",
         "@deepseek-ai/schemastery": "3.18.1",
-        "@nyssance/dsh-code-runtime-worker-thread": "0.1.2-rc.1.nyssance.1",
+        "@nyssance/dsh-code-runtime-worker-thread": "0.1.5-rc.2.nyssance.1",
         "amaro": "1.1.11",
       },
       "devDependencies": {
@@ -418,7 +418,7 @@
 
     "@mixmark-io/domino": ["@mixmark-io/domino@2.2.0", "", {}, "sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw=="],
 
-    "@nyssance/dsh-code-runtime-worker-thread": ["@nyssance/dsh-code-runtime-worker-thread@0.1.2-rc.1.nyssance.1", "", { "dependencies": { "@deepseek-ai/dsh-util-values": "^0.1.2-rc.1", "@deepseek-ai/schemastery": "^3.18.2", "amaro": "1.1.11" }, "peerDependencies": { "@deepseek-ai/cordis": "^4.0.2", "@deepseek-ai/dsh-code-runtime": "^0.1.2-rc.1", "@deepseek-ai/dsh-session": "^0.1.2-rc.1", "@deepseek-ai/dsh-timeout": "^0.1.2-rc.1" } }, "sha512-1HMDHa7i+bMnxy55GjMTyFs15Nb7brawMREFTCxHrEH9qKnH9/+0WSrkUwSiBBWT9CN3/IUyEF4tbjPYMd8tGQ=="],
+    "@nyssance/dsh-code-runtime-worker-thread": ["@nyssance/dsh-code-runtime-worker-thread@0.1.5-rc.2.nyssance.1", "", { "dependencies": { "@deepseek-ai/dsh-util-values": "^0.1.5-rc.2", "@deepseek-ai/schemastery": "^3.18.2", "amaro": "1.1.11" }, "peerDependencies": { "@deepseek-ai/cordis": "^4.0.2", "@deepseek-ai/dsh-code-runtime": "^0.1.5-rc.2", "@deepseek-ai/dsh-session": "^0.1.5-rc.2", "@deepseek-ai/dsh-timeout": "^0.1.5-rc.2" } }, "sha512-ht4niMWZ7T+l31glHSZoIF5trqAn4RpCelB6nKj8DH4RmKnkvoH51zilJOjINwbi7oGl3mnUNTxOBILpNpp4+Q=="],
 
     "@protobufjs/aspromise": ["@protobufjs/aspromise@1.1.2", "", {}, "sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ=="],
 
@@ -739,8 +739,6 @@
     "@deepseek-ai/dsh-web/@deepseek-ai/schemastery": ["@deepseek-ai/schemastery@3.18.2", "", { "dependencies": { "@deepseek-ai/cosmokit": "^1.8.3", "@standard-schema/spec": "^1.1.0" } }, "sha512-njDtZsznjYxok7KLLlHOPyuv2efdWVbSflAHgztSfbMsg+CVraEoRe2DjOCgClYv3ZCSm7WXoaUkbB/+RY7tWQ=="],
 
     "@deepseek-ai/dsh-web-search-deepseek/@deepseek-ai/schemastery": ["@deepseek-ai/schemastery@3.18.2", "", { "dependencies": { "@deepseek-ai/cosmokit": "^1.8.3", "@standard-schema/spec": "^1.1.0" } }, "sha512-njDtZsznjYxok7KLLlHOPyuv2efdWVbSflAHgztSfbMsg+CVraEoRe2DjOCgClYv3ZCSm7WXoaUkbB/+RY7tWQ=="],
-
-    "@nyssance/dsh-code-runtime-worker-thread/@deepseek-ai/dsh-util-values": ["@deepseek-ai/dsh-util-values@0.1.2-rc.1", "", { "peerDependencies": { "@deepseek-ai/cordis": "^4.0.2" } }, "sha512-FQdgoK+KYVR0pBQb9fTsajvGb3gzUxEzJQEYnFOt+Qdwc4nkxJOPwJJdIvXuqvZaQ33DaOoqpnpcr2p5HpLu4g=="],
 
     "@nyssance/dsh-code-runtime-worker-thread/@deepseek-ai/schemastery": ["@deepseek-ai/schemastery@3.18.2", "", { "dependencies": { "@deepseek-ai/cosmokit": "^1.8.3", "@standard-schema/spec": "^1.1.0" } }, "sha512-njDtZsznjYxok7KLLlHOPyuv2efdWVbSflAHgztSfbMsg+CVraEoRe2DjOCgClYv3ZCSm7WXoaUkbB/+RY7tWQ=="],
 
