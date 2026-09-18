@@ -234,9 +234,9 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "System prompt assembly (persona + tool sections)",
       async (ctx, config) => ctx.plugin(SystemPrompt, config as never),
       preset === "anchored"
-        ? { persona: "You are a helpful software engineer assistant." }
+        ? { personaPrefix: "You are a helpful software engineer assistant." }
         : preset === "cordis"
-          ? { persona: CORDIS_PERSONA }
+          ? { personaPrefix: CORDIS_PERSONA }
           : undefined,
     ),
     // Context-global presentation is the tools row's `mode` field (presentAs is

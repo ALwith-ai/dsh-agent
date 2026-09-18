@@ -43,8 +43,6 @@ type Persistence = NonNullable<Context["sessionPersistence"]>
 
 async function withPersistence<T>(root: string, run: (persistence: Persistence) => Promise<T>): Promise<T> {
   const ctx = new Context()
-  // The jsonl plugin is a backend; the coordinator that publishes
-  // ctx.sessionPersistence rides the session store.
   await ctx.plugin(SessionStore)
   await ctx.plugin(JsonlSessionPersistence, { root })
   const persistence = ctx.get("sessionPersistence")
@@ -60,7 +58,7 @@ export async function runSessionsCli(argv: string[]): Promise<void> {
   const { root, positional } = parseFlags(argv)
   const [command, ...rest] = positional
   if (command === "list") {
-    const headers = await withPersistence(root, persistence => persistence.list())
+    const headers = await withPersistence(root, async persistence => (await persistence.list()).map(snapshot => snapshot.header))
     const sessions = [...headers]
       .sort((a, b) => b.createdAt - a.createdAt)
       .map(header => ({ id: header.id, createdAt: header.createdAt, cwd: header.cwd, parentSession: header.parentSession }))
@@ -70,8 +68,16 @@ export async function runSessionsCli(argv: string[]): Promise<void> {
   if (command === "show") {
     const [id] = rest
     if (id === undefined) throw new Error("usage: sessions show <sessionId> [--root <dir>]")
-    const inspection = await withPersistence(root, persistence => persistence.inspect(id as never))
-    process.stdout.write(`${JSON.stringify({ root, meta: inspection.meta, events: inspection.events })}\n`)
+    const inspection = await withPersistence(root, async persistence => {
+      const handle = await persistence.open(id as never, "read")
+      try {
+        const { events } = await handle.read()
+        return { meta: handle.header, inheritedEventCount: handle.inheritedEventCount, events }
+      } finally {
+        await handle.close()
+      }
+    })
+    process.stdout.write(`${JSON.stringify({ root, ...inspection })}\n`)
     return
   }
   throw new Error(`unknown sessions command "${command ?? ""}": expected list or show`)

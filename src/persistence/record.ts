@@ -44,6 +44,8 @@ export interface EncodeState {
   lastUuid: string | null
   /** Content-addressed snapshot refs already present in the file. */
   readonly snapshotRefs: Set<string>
+  /** Snapshot ref of the system prompt in force (`system/message`), stamped on request lines. */
+  systemPromptRef: string | null
 }
 
 export interface EncodeContext {
@@ -248,7 +250,7 @@ function projectRequestHeader(context: EncodeContext, state: EncodeState, event:
     }
     return { ref }
   }
-  const systemPrompt = header.system === undefined ? null : snapshot(header.system)
+  const systemPrompt = state.systemPromptRef === null ? null : { ref: state.systemPromptRef }
   const tools = header.tools === undefined ? null : snapshot(header.tools)
   lines.push(
     alwithLine("request", {
@@ -267,27 +269,29 @@ function projectRequestHeader(context: EncodeContext, state: EncodeState, event:
   return lines
 }
 
+function projectSystemMessage(state: EncodeState, event: SessionEvent<"system/message">): string | undefined {
+  const text = event.data.message.content.map(blockText).filter((part): part is string => part !== undefined).join("\n")
+  const ref = sha256(text)
+  state.systemPromptRef = ref
+  if (state.snapshotRefs.has(ref)) return undefined
+  state.snapshotRefs.add(ref)
+  return alwithLine("snapshot", { seq: event.seq, time: isoTime(event.time), engine: ENGINE, ref, content: text })
+}
+
 /**
- * Encode one contiguous batch: every event verbatim (delta chunks packed per run), plus the
- * message-layer projection and request provenance. Returns newline-terminated text.
+ * Encode one contiguous batch: every event verbatim, plus the message-layer projection and request
+ * provenance. Returns newline-terminated text.
  */
 export function encodeBatch(context: EncodeContext, state: EncodeState, events: readonly SessionEvent[]): string {
   const lines: string[] = []
-  let chunkRun: SessionEvent[] = []
-  const flushChunks = (): void => {
-    if (chunkRun.length === 0) return
-    const first = chunkRun[0]!
-    lines.push(alwithLine("chunks", { seq: first.seq, time: isoTime(first.time), engine: ENGINE, events: chunkRun }))
-    chunkRun = []
-  }
   for (const event of events) {
-    if (event.type === "assistant/chunk") {
-      chunkRun.push(event)
-      continue
-    }
-    flushChunks()
     lines.push(alwithLine("event", { seq: event.seq, time: isoTime(event.time), engine: ENGINE, event }))
     switch (event.type) {
+      case "system/message": {
+        const line = projectSystemMessage(state, event)
+        if (line !== undefined) lines.push(line)
+        break
+      }
       case "user/message": {
         const line = projectUserMessage(context, state, event)
         if (line !== undefined) lines.push(line)
@@ -310,7 +314,6 @@ export function encodeBatch(context: EncodeContext, state: EncodeState, events: 
         break
     }
   }
-  flushChunks()
   return lines.length === 0 ? "" : `${lines.join("\n")}\n`
 }
 
@@ -333,6 +336,7 @@ interface RecordLine {
   event?: SessionEvent
   events?: SessionEvent[]
   ref?: string
+  systemPrompt?: { ref?: string } | null
   version?: number
   createdAt?: string
   dsh?: DshHeaderBlock
@@ -543,6 +547,7 @@ class Reconstruction {
           content: message,
           source: { kind: "model", provider: line.alwith?.providerId ?? "alwith", model: line.message?.model ?? "unknown" },
         },
+        stream: [],
       },
       surfaceOp: "append",
     })
@@ -551,6 +556,27 @@ class Reconstruction {
       this.push({ type: "tool/call", time, data: { turn: this.turn, step: this.step, callId: ToolCallId(call.id), name: call.name, arguments: call.arguments } })
     }
   }
+}
+
+/**
+ * Lift an event written by an older dsh onto the current shape, or drop it when the current
+ * vocabulary has no place for it. Unknown types pass through untouched: the seam's validator
+ * refuses them fail-closed with the type named.
+ */
+function upgradeStoredEvent(event: SessionEvent): SessionEvent | undefined {
+  const raw = event as unknown as { type: string; data: Record<string, unknown> }
+  if (raw.type === "assistant/chunk") return undefined
+  if ((raw.type === "assistant/message" || raw.type === "assistant/attempt") && raw.data.stream === undefined) {
+    return { ...event, data: { ...raw.data, stream: [] } } as unknown as SessionEvent
+  }
+  if (raw.type === "request/header") {
+    const header = raw.data.header as Record<string, unknown> | undefined
+    if (header !== undefined && "system" in header) {
+      const { system: _system, ...rest } = header
+      return { ...event, data: { ...raw.data, header: rest } } as unknown as SessionEvent
+    }
+  }
+  return event
 }
 
 function headerFromLines(recordId: SessionId, lines: readonly RecordLine[], fallbackCwd: string | undefined): SessionHeader {
@@ -601,7 +627,7 @@ export function decodeRecord(buffer: Buffer, recordId: SessionId, fallbackCwd?: 
     ordered.push(line)
   }
 
-  const state: EncodeState = { lastUuid: null, snapshotRefs: new Set() }
+  const state: EncodeState = { lastUuid: null, snapshotRefs: new Set(), systemPromptRef: null }
   const collected: Array<{ event: SessionEvent; oldSeq: number | undefined }> = []
   const reconstruction = new Reconstruction(recordId)
   const flushReconstruction = (): void => {
@@ -613,20 +639,22 @@ export function decodeRecord(buffer: Buffer, recordId: SessionId, fallbackCwd?: 
       switch (line.kind) {
         case "event":
           if (line.engine === ENGINE && line.event !== undefined) {
+            const event = upgradeStoredEvent(line.event)
+            if (event === undefined) break
             reconstruction.closeTurn()
             flushReconstruction()
-            collected.push({ event: line.event, oldSeq: line.event.seq })
+            collected.push({ event, oldSeq: line.event.seq })
           }
           break
         case "chunks":
-          if (line.engine === ENGINE && line.events !== undefined) {
-            reconstruction.closeTurn()
-            flushReconstruction()
-            for (const event of line.events) collected.push({ event, oldSeq: event.seq })
-          }
+          // dsh ≤ 0.1.2 wrote transient delta chunks as events; 0.1.5 keeps the stream inside the
+          // committed assistant/message, so the run is dropped and its seqs fall out of the log.
           break
         case "snapshot":
           if (line.ref !== undefined) state.snapshotRefs.add(line.ref)
+          break
+        case "request":
+          if (line.systemPrompt?.ref !== undefined) state.systemPromptRef = line.systemPrompt.ref
           break
         default:
           break

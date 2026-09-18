@@ -4,7 +4,7 @@
  */
 import { describe, expect, test } from "bun:test"
 import { Context } from "@deepseek-ai/cordis"
-import SessionStore, { SessionId } from "@deepseek-ai/dsh-session"
+import SessionStore, { SESSION_FORMAT_VERSION, SessionId } from "@deepseek-ai/dsh-session"
 import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -12,7 +12,6 @@ import AlwithSessionPersistence from "../src/persistence/alwith.ts"
 import { decodeRecord, projectKey } from "../src/persistence/record.ts"
 import { makeHarness, textResponse, untilFrame } from "./harness.ts"
 import { meta, oneTurnLog, runPersistenceContract } from "./upstream/persistence-contract.ts"
-import { runCoordinatorContract, type CoordinatorFixture } from "./upstream/coordinator-contract.ts"
 
 const WORK = "/w"
 
@@ -26,29 +25,25 @@ async function freshRoot(prefix: string): Promise<string> {
 
 runPersistenceContract("alwith", async () => {
   const dir = await freshRoot("dsh-alwith-")
-  const ctx = new Context()
-  await ctx.plugin(SessionStore)
-  const fiber = await ctx.plugin(AlwithSessionPersistence, { projectsDir: dir })
+  const mount = async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(AlwithSessionPersistence, { projectsDir: dir })
+    return { persistence: ctx.sessionPersistence, dispose: () => ctx.fiber.dispose() }
+  }
+  const primary = await mount()
   return {
-    persistence: ctx.sessionPersistence,
+    persistence: primary.persistence,
     dispose: async () => {
-      await fiber.dispose()
+      await primary.dispose()
       await rm(dir, { recursive: true, force: true })
     },
-  }
-})
-
-runCoordinatorContract("alwith", async (): Promise<CoordinatorFixture> => {
-  const dir = await freshRoot("dsh-alwith-coord-")
-  return {
-    mount: async ctx => ctx.plugin(AlwithSessionPersistence, { projectsDir: dir }),
+    // Another process over the same library: a fresh provider, same projectsDir.
+    reopen: mount,
     // A half-written line with no trailing newline is an uncommitted crash fragment: the decoder
-    // reports committedBytes < byteLength and the coordinator repairs through commitRepair.
+    // reports committedBytes < byteLength and the first append truncates it.
     corruptTail: async (id, cwd) => {
       await appendFile(recordPath(dir, cwd, id), '{"type":"alwith","kind":"event","seq":8,"ti')
-    },
-    cleanup: async () => {
-      await rm(dir, { recursive: true, force: true })
     },
   }
 })
@@ -62,8 +57,8 @@ describe("ALwith record shape", () => {
       const fiber = await ctx.plugin(AlwithSessionPersistence, { projectsDir: dir, providerId: "deepseek", writerVersion: "9.9.9" })
       const id = SessionId("shape-1")
       const header = meta(id, WORK)
-      await ctx.sessionPersistence.create(header)
-      await ctx.sessionPersistence.append(id, oneTurnLog())
+      const writer = await ctx.sessionPersistence.create(header)
+      await writer.append(oneTurnLog())
       const lines = (await readFile(recordPath(dir, WORK, id), "utf8")).trim().split("\n").map(line => JSON.parse(line))
 
       expect(lines[0]).toMatchObject({ type: "alwith", kind: "header", version: 1, recordId: id, cwd: WORK, writer: { engine: "dsh", version: "9.9.9" } })
@@ -79,8 +74,11 @@ describe("ALwith record shape", () => {
       expect(assistant.parentUuid).toBe(user.uuid)
       expect(user.parentUuid).toBeNull()
 
-      const loaded = await ctx.sessionPersistence.load(id)
-      expect(loaded.events).toEqual(oneTurnLog())
+      expect((await writer.read()).events).toEqual(oneTurnLog())
+      await writer.close()
+      const reader = await ctx.sessionPersistence.open(id, "read")
+      expect((await reader.read()).events).toEqual(oneTurnLog())
+      await reader.close()
       await fiber.dispose()
     } finally {
       await rm(dir, { recursive: true, force: true })
@@ -94,20 +92,30 @@ describe("ALwith record shape", () => {
       await ctx.plugin(SessionStore)
       const fiber = await ctx.plugin(AlwithSessionPersistence, { projectsDir: dir })
       const id = SessionId("request-1")
-      await ctx.sessionPersistence.create(meta(id, WORK))
+      const writer = await ctx.sessionPersistence.create(meta(id, WORK))
+      // dsh 0.1.5: the system prompt is a `system/message` event; the epoch header carries config and tools.
+      const systemMessage = (seq: number, text: string) => ({
+        type: "system/message" as const,
+        seq,
+        time: 10 + seq,
+        data: { turn: 1, step: 1, message: { id: `system-${seq}`, role: "system", content: [{ type: "text", text }], source: { kind: "plugin", plugin: "system-prompt" } } },
+        surfaceOp: "append" as const,
+      })
       const requestHeader = (seq: number) => ({
         type: "request/header" as const,
         seq,
         time: 10 + seq,
-        data: { header: { config: { provider: "mock", model: "m" }, system: "be brief", tools: [{ name: "read", description: "r", parameters: {} }] }, reason: "initial" as const },
+        data: { header: { config: { provider: "mock", model: "m" }, tools: [{ name: "read", description: "r", parameters: {} }] }, reason: "initial" as const },
       })
-      await ctx.sessionPersistence.append(id, [requestHeader(0), requestHeader(1)] as never)
+      await writer.append([systemMessage(0, "be brief"), requestHeader(1), systemMessage(2, "be brief"), requestHeader(3)] as never)
+      await writer.close()
       const lines = (await readFile(recordPath(dir, WORK, id), "utf8")).trim().split("\n").map(line => JSON.parse(line))
       const snapshots = lines.filter(line => line.kind === "snapshot")
       const requests = lines.filter(line => line.kind === "request")
       expect(snapshots).toHaveLength(2)
       expect(requests).toHaveLength(2)
       expect(requests[0].systemPrompt.ref).toBe(snapshots.find(s => s.content === "be brief").ref)
+      expect(requests[1].systemPrompt.ref).toBe(requests[0].systemPrompt.ref)
       expect(requests[0].tools.ref).toBe(requests[1].tools.ref)
       await fiber.dispose()
     } finally {
@@ -168,7 +176,7 @@ describe("records written by the ALwith CLI", () => {
     const id = SessionId("cli-1")
     const decoded = decodeRecord(Buffer.from(cliRecord(id, WORK)), id)
     expect(decoded.hasHeader).toBe(false)
-    expect(decoded.meta).toMatchObject({ version: 0, id, cwd: WORK, isSeeded: false })
+    expect(decoded.meta).toMatchObject({ version: SESSION_FORMAT_VERSION, id, cwd: WORK, isSeeded: false })
     expect(decoded.events.map(event => event.type)).toEqual([
       "turn/start",
       "user/message",
@@ -323,8 +331,8 @@ describe("one record id under two project directories", () => {
       await ctx.plugin(AlwithSessionPersistence, { projectsDir: dir })
       const provider = ctx.get("sessionPersistence")!
       const listed = await provider.list()
-      expect(listed.map(header => [header.id, header.cwd])).toEqual([[id, "/w/new"]])
-      expect((await provider.readRaw(id))?.meta.cwd).toBe("/w/new")
+      expect(listed.map(({ header }) => [header.id, header.cwd])).toEqual([[id, "/w/new"]])
+      expect((await provider.stat(id))?.header.cwd).toBe("/w/new")
       expect(warnings.some(message => message.includes("shadowing") && message.includes(older))).toBe(true)
     } finally {
       await rm(dir, { recursive: true, force: true })

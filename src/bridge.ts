@@ -417,14 +417,15 @@ export function apply(ctx: Context, config: AcpConfig): void {
     if (persistence === undefined) {
       throw internalError("session persistence is not configured; session/resume is unavailable")
     }
-    let inspection: Awaited<ReturnType<typeof persistence.inspect>>
+    let snapshot: Awaited<ReturnType<typeof persistence.stat>>
     try {
-      inspection = await persistence.inspect(sessionId)
+      snapshot = await persistence.stat(sessionId)
     } catch (error: unknown) {
       throw invalidParams(`unknown session: ${sessionId} (${errorChain(error)})`)
     }
-    if (inspection.meta.cwd !== undefined && !sameDirectory(inspection.meta.cwd, cwd)) {
-      throw invalidParams(`cwd mismatch: session was created in ${inspection.meta.cwd}`)
+    if (snapshot === undefined) throw invalidParams(`unknown session: ${sessionId}`)
+    if (snapshot.header.cwd !== undefined && !sameDirectory(snapshot.header.cwd, cwd)) {
+      throw invalidParams(`cwd mismatch: session was created in ${snapshot.header.cwd}`)
     }
     const handle = await agents.resume({ resumeSessionId: sessionId, agentOptions: agentOptions(config) })
     if (closed) {
@@ -491,37 +492,55 @@ export function apply(ctx: Context, config: AcpConfig): void {
   }
 
   // Token-level streaming: text-delta → agent_message_chunk, reasoning-delta →
-  // agent_thought_chunk. Committed assistant/message text is NOT re-emitted,
-  // or the client would render it twice.
+  // agent_thought_chunk. Deltas are process-local assistant-stream frames (dsh
+  // 0.1.5 keeps them out of the session log; the committed assistant/message
+  // carries the whole stream). Committed text is NOT re-emitted, or the client
+  // would render it twice.
   // Note: chunks of a retried model request have already streamed out — the
   // same live-stream behavior CLI frontends exhibit.
+  // v2 ContentChunk requires messageId (chunks of one message share it; a change
+  // starts a new message). One dsh step is one model response, so a
+  // session/turn/step composite is a stable per-message identity; the start
+  // frame is the only one that names the step, so it is remembered per attempt.
+  const attemptMessageIds = new Map<string, MessageId>()
+  ctx.on("agent/assistant-stream", ({ agent, frame }) => {
+    const record = sessions.get(agent.session.header.id)
+    if (record === undefined || record.agent !== agent) return
+    {
+      if (frame.type === "start") {
+        attemptMessageIds.set(frame.attemptId, MessageId(`${agent.session.id}/${frame.turn}/${frame.step}`))
+        return
+      }
+      if (frame.type === "end") {
+        attemptMessageIds.delete(frame.attemptId)
+        return
+      }
+      const messageId = attemptMessageIds.get(frame.attemptId)
+      if (messageId === undefined) throw new Error(`assistant stream chunk for attempt ${frame.attemptId} arrived before its start frame`)
+      const chunk = frame.chunk
+      if (chunk.type === "text-delta" && chunk.text.length > 0) {
+        notify({
+          sessionId: agent.session.id,
+          update: { sessionUpdate: "agent_message_chunk", messageId, content: { type: "text", text: chunk.text }, _meta: turnMeta(record) },
+        })
+      } else if (chunk.type === "reasoning-delta" && chunk.text.length > 0) {
+        notify({
+          sessionId: agent.session.id,
+          update: {
+            sessionUpdate: "agent_thought_chunk",
+            messageId: MessageId(`${messageId}/thought`),
+            content: { type: "text", text: chunk.text },
+            _meta: turnMeta(record),
+          },
+        })
+      }
+    }
+  })
   ctx.on("session/event", (session, event: SessionEvent) => {
     const record = sessions.get(session.header.id)
     if (record === undefined || record.agent.session !== session) return
     try {
-      if (event.type === "assistant/chunk") {
-        const chunk = event.data.chunk
-        // v2 ContentChunk requires messageId (chunks of one message share it; a
-        // change starts a new message). One dsh step is one model response, so
-        // a session/turn/step composite is a stable per-message identity.
-        const messageId = MessageId(`${record.agent.session.id}/${event.data.turn}/${event.data.step}`)
-        if (chunk.type === "text-delta" && chunk.text.length > 0) {
-          notify({
-            sessionId: record.agent.session.id,
-            update: { sessionUpdate: "agent_message_chunk", messageId, content: { type: "text", text: chunk.text }, _meta: turnMeta(record) },
-          })
-        } else if (chunk.type === "reasoning-delta" && chunk.text.length > 0) {
-          notify({
-            sessionId: record.agent.session.id,
-            update: {
-              sessionUpdate: "agent_thought_chunk",
-              messageId: MessageId(`${messageId}/thought`),
-              content: { type: "text", text: chunk.text },
-              _meta: turnMeta(record),
-            },
-          })
-        }
-      } else if (event.type === "assistant/message") {
+      if (event.type === "assistant/message") {
         for (const block of event.data.message.content) {
           if (block.type === "image") throw noImageAttachments(block.attachment.attachmentId)
         }
@@ -694,7 +713,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
       const params: ListSessionsRequest = context.params
       const persistence = ctx.get("sessionPersistence")
       if (persistence === undefined) throw internalError("session persistence is not mounted")
-      const headers = await persistence.list()
+      const headers = (await persistence.list()).map(snapshot => snapshot.header)
       const sessions = headers
         .filter(header => params.cwd === undefined || params.cwd === null || header.cwd === params.cwd)
         .sort((a, b) => b.createdAt - a.createdAt)
@@ -748,7 +767,9 @@ export function apply(ctx: Context, config: AcpConfig): void {
         if (record.switching !== undefined) throw invalidParams("a model switch is already in progress")
         if (record.model !== value) {
           // Handle disposal durably clears the inbox; retain unconsumed seed/input.
-          if (record.agent.inbox.hasPending) throw invalidParams("cannot switch model while input is pending; send a prompt first")
+          if (record.agent.inbox.nextTurn.length > 0 || record.agent.inbox.nextStep.length > 0) {
+            throw invalidParams("cannot switch model while input is pending; send a prompt first")
+          }
           // In-place options are immutable on a live dsh agent; the sanctioned
           // switch is dispose + resume with new agentOptions — same machinery
           // as session/resume, so history and turn numbering carry over.
@@ -756,18 +777,15 @@ export function apply(ctx: Context, config: AcpConfig): void {
           if (persistence === undefined) {
             throw internalError("session persistence is not configured; model switching is unavailable")
           }
-          const previous = record.agent
-          const id = previous.session.id
-          const empty = previous.session.snapshotEvents().length === 0
+          const id = record.agent.session.id
           record.switching = (async () => {
             const options = { ...(config.provider !== undefined ? { provider: config.provider } : {}), model: value }
+            // The flush is the durability barrier: it materializes even an untouched session
+            // (header only), so every session is resumable afterwards.
             await ctx.sessions.flush(record.agent.session)
             await record.dispose()
             if (closed || sessions.get(id) !== record) throw internalError("session closed during model switch")
-            // JSONL persistence is event-driven: an untouched session has no log to resume.
-            const handle = empty
-              ? await agents.create({ sessionId: id, meta: { cwd: previous.session.header.cwd }, agentOptions: options })
-              : await agents.resume({ resumeSessionId: id, agentOptions: options })
+            const handle = await agents.resume({ resumeSessionId: id, agentOptions: options })
             if (closed || sessions.get(id) !== record) {
               await handle.dispose()
               throw internalError("session closed during model switch")
@@ -783,7 +801,6 @@ export function apply(ctx: Context, config: AcpConfig): void {
             if (sessions.get(id) === record) sessions.delete(id)
             record.titleAbort.abort()
             await record.dispose()
-            if (empty) throw internalError(`model switch failed; empty session is no longer resumable, create a new session: ${errorChain(error)}`)
             throw internalError(`model switch failed; recover the persisted session with session/resume: ${errorChain(error)}`)
           } finally {
             record.switching = undefined
@@ -896,13 +913,17 @@ export function apply(ctx: Context, config: AcpConfig): void {
       // session is dropped rather than reported on a released agent.
       sessions.delete(SessionId(params.sessionId))
       record.titleAbort.abort()
-      record.agent.cancel({ kind: "user" })
+      // A switch owns the retiring agent's teardown: it has already flushed and is disposing it,
+      // and a disposing agent no longer answers cancel/idle queries (its inbox projection is gone).
+      const live = (): boolean => ctx.agents.get(record.agent.id) === record.agent
+      if (record.switching === undefined && live()) record.agent.cancel({ kind: "user" })
       settlePrompt(record)
       try {
         await record.switching?.catch(() => {})
-        await record.agent.whenIdle()
-        // A switch flushes before retirement; its retired session is no longer in the store.
-        if (ctx.agents.get(record.agent.id) === record.agent) await ctx.sessions.flush(record.agent.session)
+        if (live()) {
+          await record.agent.whenIdle()
+          await ctx.sessions.flush(record.agent.session)
+        }
       } catch (error: unknown) {
         throw internalError(`session close failed: ${errorChain(error)}`)
       } finally {

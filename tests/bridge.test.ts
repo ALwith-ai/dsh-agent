@@ -37,9 +37,13 @@ describe("dsh-agent bridge", () => {
 
   test("initialize carries the package version, not a hardcoded one", async () => {
     const h = await makeHarness([])
-    const result = await h.initialize()
-    expect(result.info.version).toMatch(/^\d+\.\d+\.\d+/)
-    expect(result.info.version).not.toBe("0.1.0")
+    try {
+      const result = await h.initialize()
+      expect(result.info.version).toMatch(/^\d+\.\d+\.\d+/)
+      expect(result.info.version).not.toBe("0.1.0")
+    } finally {
+      await h.dispose()
+    }
   })
 
   test("session/list is baseline: lists persisted sessions newest first, narrowed by cwd", async () => {
@@ -58,6 +62,9 @@ describe("dsh-agent bridge", () => {
     expect(all.sessions[0]?.updatedAt).toMatch(/^\d{4}-/)
     const narrowed = await h.agent.request("session/list", { cwd: "/tmp" })
     expect(narrowed.sessions.map(session => session.sessionId)).toEqual([first.sessionId])
+    // The JSONL backend holds a lock file per live session; an undisposed harness leaks them
+    // and Bun reports the handles when a later test's GC collects them.
+    await h.dispose()
   })
 
 
