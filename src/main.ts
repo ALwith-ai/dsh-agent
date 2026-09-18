@@ -6,12 +6,13 @@
  */
 
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { isAbsolute, join } from "node:path"
 import { credentialKey } from "@deepseek-ai/dsh-credentials"
 import packageJson from "../package.json" with { type: "json" }
 import { composeRuntime } from "./compose.ts"
 import { defaultCredentialsFile } from "./oauth.ts"
 import { loadPluginOverrides } from "./plugins.ts"
+import { loadPresetPackage } from "./preset-package.ts"
 import { defaultPluginsFile, runPluginsCli } from "./plugins-cli.ts"
 import * as Bridge from "./bridge.ts"
 
@@ -67,8 +68,10 @@ async function startServer(): Promise<void> {
   // the host UI disables them, and a misrouted value must not silently degrade.
   const rawPreset = process.env.ALWITH_DSH_PRESET ?? "standard"
   const PRESETS = ["standard", "minimal", "anchored", "code", "cordis"] as const
-  if (!(PRESETS as readonly string[]).includes(rawPreset)) {
-    throw new Error(`unsupported harness preset "${rawPreset}": this sidecar composes ${PRESETS.join(", ")}`)
+  // An absolute path names a preset package (alwith-dsh-preset.json + its plugin modules).
+  const preset = isAbsolute(rawPreset) ? loadPresetPackage(rawPreset) : (rawPreset as (typeof PRESETS)[number])
+  if (typeof preset === "string" && !(PRESETS as readonly string[]).includes(preset)) {
+    throw new Error(`unsupported harness preset "${rawPreset}": this sidecar composes ${PRESETS.join(", ")} or an absolute preset package path`)
   }
 
   // Per-plugin enable/disable + config; invalid content fails the spawn loud.
@@ -94,7 +97,7 @@ async function startServer(): Promise<void> {
     writerVersion: packageJson.version,
     workspaceRoot,
     permissionMode,
-    preset: rawPreset as (typeof PRESETS)[number],
+    preset,
     overrides,
     piProviders,
     // The credential plane rides with the pi-ai seat: subscription grants and

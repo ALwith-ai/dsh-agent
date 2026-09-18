@@ -20,6 +20,7 @@ import {
   resolvePlugins,
   type PersistenceKind,
 } from "./plugins.ts"
+import type { PresetPackage } from "./preset-package.ts"
 
 export type { HarnessPreset, PermissionMode, PersistenceKind }
 
@@ -41,8 +42,8 @@ export interface ComposeOptions {
   workspaceRoot?: string
   /** Deployment permission mode; mirrors dsh's DSH_PERMISSION_MODE. */
   permissionMode?: PermissionMode
-  /** Tool-surface preset; defaults to the standard coding agent. */
-  preset?: HarnessPreset
+  /** Tool-surface preset; defaults to the standard coding agent. A preset package extends one. */
+  preset?: HarnessPreset | PresetPackage
   /** Per-plugin enable/disable + config, from the plugins.json overrides file. */
   overrides?: PluginOverrides
   /** Extra pi-ai provider routes (see ResolvedComposeOptions.piProviders). */
@@ -60,11 +61,17 @@ export async function composeRuntime(options: ComposeOptions = {}): Promise<Cont
     writerVersion: options.writerVersion,
     workspaceRoot: options.workspaceRoot ?? process.cwd(),
     permissionMode: options.permissionMode ?? "workspace-write",
-    preset: options.preset ?? "standard",
+    preset: typeof options.preset === "object" ? options.preset.manifest.extends : (options.preset ?? "standard"),
+    ...(typeof options.preset === "object" ? { presetPackage: options.preset } : {}),
     piProviders: options.piProviders,
     credentialsFile: options.credentialsFile,
   })
-  const { mounted } = resolvePlugins(rows, options.overrides ?? {})
+  const overrides = options.overrides ?? {}
+  const packageDisabled = typeof options.preset === "object" ? (options.preset.manifest.disabled ?? []) : []
+  const { mounted } = resolvePlugins(rows, {
+    ...overrides,
+    ...(packageDisabled.length === 0 ? {} : { disabled: [...new Set([...(overrides.disabled ?? []), ...packageDisabled])] }),
+  })
   const ctx = new Context()
   for (const entry of mounted) {
     await entry.row.mount(ctx, entry.config)

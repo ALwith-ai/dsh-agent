@@ -65,6 +65,7 @@ import TerminalSessionService from "@deepseek-ai/dsh-terminal";
 import * as TerminalBash from "@deepseek-ai/dsh-terminal-bash";
 import * as ToolBashPersistent from "@deepseek-ai/dsh-tool-bash-persistent";
 import * as ToolStrReplaceEditor from "@deepseek-ai/dsh-tool-str-replace-editor";
+import { loadPresetPlugin, type PresetPackage } from "./preset-package.ts";
 import TokenMeter from "@deepseek-ai/dsh-token-meter";
 import CommandRegistry from "@deepseek-ai/dsh-commands";
 import BasicCompactionEngine from "@deepseek-ai/dsh-compaction-basic";
@@ -128,6 +129,11 @@ export interface ResolvedComposeOptions {
   workspaceRoot: string;
   permissionMode: PermissionMode;
   preset: HarnessPreset;
+  /**
+   * A preset package extending `preset`: its persona prefix and skills replace
+   * the built-in ones, and its plugin rows mount after the built-in roster.
+   */
+  presetPackage?: PresetPackage;
   /**
    * Extra pi-ai provider routes (full upstream config shape passed through:
    * apiKeyEnv / baseURL / api / models / compat / …). Absent means the
@@ -244,11 +250,13 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "@deepseek-ai/dsh-system-prompt",
       "System prompt assembly (persona + tool sections)",
       async (ctx, config) => ctx.plugin(SystemPrompt, config as never),
-      preset === "anchored"
-        ? { personaPrefix: "You are a helpful software engineer assistant." }
-        : preset === "cordis"
-          ? { personaPrefix: CORDIS_PERSONA }
-          : undefined,
+      options.presetPackage?.manifest.personaPrefix !== undefined
+        ? { personaPrefix: options.presetPackage.manifest.personaPrefix }
+        : preset === "anchored"
+          ? { personaPrefix: "You are a helpful software engineer assistant." }
+          : preset === "cordis"
+            ? { personaPrefix: CORDIS_PERSONA }
+            : undefined,
     ),
     // Context-global presentation is the tools row's `mode` field (presentAs is
     // the per-agent-scope variant used by dsh's preset realms).
@@ -715,6 +723,61 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       );
     }
   }
+  const pkg = options.presetPackage;
+  if (pkg !== undefined) {
+    // A package's skills ride the same registry rows the cordis preset mounts;
+    // when the base preset already mounts them, only the directory is added.
+    if (pkg.manifest.skillsDir !== undefined) {
+      const skillRow = rows.find((row) => row.id === "skill-filesystem");
+      if (skillRow !== undefined) {
+        const dirs = (skillRow.config?.customSkillDirs as string[] | undefined) ?? [];
+        skillRow.config = { ...skillRow.config, customSkillDirs: [...dirs, pkg.manifest.skillsDir] };
+      } else {
+        rows.push(
+          tool(
+            "skill",
+            "@deepseek-ai/dsh-skill",
+            "Skill registry (session skill catalog)",
+            async (ctx, config) => ctx.plugin(SkillRegistry, config as never),
+          ),
+          tool(
+            "skill-filesystem",
+            "@deepseek-ai/dsh-skill-filesystem",
+            `Filesystem skill provider (${pkg.manifest.name} preset skills)`,
+            async (ctx, config) => ctx.plugin(SkillFilesystem, config as never),
+            { customSkillDirs: [pkg.manifest.skillsDir] },
+            ["skill"],
+          ),
+          tool(
+            "tool-skill",
+            "@deepseek-ai/dsh-tool-skill",
+            "skill tool (load skill instructions)",
+            async (ctx, config) => ctx.plugin(ToolSkill, config as never),
+            undefined,
+            ["skill"],
+          ),
+        );
+      }
+    }
+    const builtIn = new Set(rows.map((row) => row.id));
+    for (const spec of pkg.manifest.plugins) {
+      if (builtIn.has(spec.id)) {
+        throw new Error(
+          `preset package ${pkg.dir}: plugin id "${spec.id}" collides with a built-in row`,
+        );
+      }
+      rows.push(
+        tool(
+          spec.id,
+          `${pkg.manifest.name} preset: ${spec.module}`,
+          spec.description ?? `${pkg.manifest.name} preset plugin`,
+          async (ctx, config) => ctx.plugin((await loadPresetPlugin(pkg, spec)) as never, config as never),
+          spec.config,
+          spec.requires,
+        ),
+      );
+    }
+  }
   return rows;
 }
 
@@ -823,6 +886,7 @@ export function resolvePlugins(
   overrides: PluginOverrides,
 ): ResolvedPlugins {
   const known = allPluginIds();
+  for (const row of rows) known.add(row.id);
   for (const id of overrides.disabled ?? []) {
     if (!known.has(id))
       throw new Error(
