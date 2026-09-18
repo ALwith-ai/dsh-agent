@@ -65,6 +65,17 @@ import TerminalSessionService from "@deepseek-ai/dsh-terminal";
 import * as TerminalBash from "@deepseek-ai/dsh-terminal-bash";
 import * as ToolBashPersistent from "@deepseek-ai/dsh-tool-bash-persistent";
 import * as ToolStrReplaceEditor from "@deepseek-ai/dsh-tool-str-replace-editor";
+import TokenMeter from "@deepseek-ai/dsh-token-meter";
+import CommandRegistry from "@deepseek-ai/dsh-commands";
+import BasicCompactionEngine from "@deepseek-ai/dsh-compaction-basic";
+import * as CommandCompact from "@deepseek-ai/dsh-command-compact";
+import ToolResultPruner from "@deepseek-ai/dsh-compaction-tool-result-pruner";
+import SubagentRuntime from "@deepseek-ai/dsh-subagent";
+import * as SubagentSpawnInProcess from "@deepseek-ai/dsh-subagent-spawn-in-process";
+import * as SubagentForkInProcess from "@deepseek-ai/dsh-subagent-fork-in-process";
+import * as ToolSubagentControl from "@deepseek-ai/dsh-tool-subagent-control";
+import * as ToolSubagentListAgents from "@deepseek-ai/dsh-tool-subagent-control/list-agents";
+import * as ToolSubagent from "@deepseek-ai/dsh-tool-subagent";
 
 export type HarnessPreset =
   "standard" | "minimal" | "anchored" | "code" | "cordis";
@@ -421,6 +432,63 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
         },
       },
     ),
+    // Context accounting and compaction (dsh-base's host plane): the token meter
+    // prices every surface node; the basic engine compacts on step pressure and
+    // on a context-overflow request error; `/compact` is the human command over
+    // the same engine; the pruner trims long tool results before the model.
+    core(
+      "token-meter",
+      "@deepseek-ai/dsh-token-meter",
+      "Token meter (per-session context accounting)",
+      async (ctx, config) => ctx.plugin(TokenMeter, config as never),
+    ),
+    core(
+      "commands",
+      "@deepseek-ai/dsh-commands",
+      "Slash command registry",
+      async (ctx, config) => ctx.plugin(CommandRegistry, config as never),
+    ),
+    core(
+      "compaction-basic",
+      "@deepseek-ai/dsh-compaction-basic",
+      "Automatic context compaction (pressure + overflow recovery)",
+      async (ctx, config) => ctx.plugin(BasicCompactionEngine, config as never),
+    ),
+    core(
+      "command-compact",
+      "@deepseek-ai/dsh-command-compact",
+      "/compact command over the mounted compaction engine",
+      async (ctx, config) => ctx.plugin(CommandCompact, config as never),
+    ),
+    core(
+      "compaction-tool-result-pruner",
+      "@deepseek-ai/dsh-compaction-tool-result-pruner",
+      "Trims oversized tool results before the model sees them",
+      async (ctx, config) => ctx.plugin(ToolResultPruner, config as never),
+      { thresholdChars: 8192, headChars: 4096, tailChars: 1024 },
+    ),
+    // Delegation host plane: the subagent registry and its in-process backends.
+    // The model-facing delegation tools are preset rows below.
+    core(
+      "subagent",
+      "@deepseek-ai/dsh-subagent",
+      "Subagent registry (delegated child agents)",
+      async (ctx, config) => ctx.plugin(SubagentRuntime, config as never),
+    ),
+    core(
+      "subagent-spawn-in-process",
+      "@deepseek-ai/dsh-subagent-spawn-in-process",
+      "Spawn backend: a fresh child agent in this process",
+      async (ctx, config) => ctx.plugin(SubagentSpawnInProcess, config as never),
+      { providerName: "spawn" },
+    ),
+    core(
+      "subagent-fork-in-process",
+      "@deepseek-ai/dsh-subagent-fork-in-process",
+      "Fork backend: a child inheriting the parent's history",
+      async (ctx, config) => ctx.plugin(SubagentForkInProcess, config as never),
+      { providerName: "fork" },
+    ),
   );
   // Model-facing tools per preset (configs mirror dsh's shipped rows).
   const terminalTrio: PluginRow[] = [
@@ -558,6 +626,35 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
         async (ctx, config) => ctx.plugin(ToolBash, config as never),
       ),
       ...codingTools,
+      // Delegation tools (dsh-base rows): continuable spawn children plus the
+      // one-shot fork that keeps provider/model equal to the parent so the
+      // inherited history stays KV-cache eligible.
+      tool(
+        "tool-subagent-control",
+        "@deepseek-ai/dsh-tool-subagent-control",
+        "send_message to a continuable child agent",
+        async (ctx, config) => ctx.plugin(ToolSubagentControl, config as never),
+      ),
+      tool(
+        "tool-subagent-list-agents",
+        "@deepseek-ai/dsh-tool-subagent-control/list-agents",
+        "list_agents (running child agents)",
+        async (ctx, config) => ctx.plugin(ToolSubagentListAgents, config as never),
+      ),
+      tool(
+        "tool-subagent",
+        "@deepseek-ai/dsh-tool-subagent",
+        "subagent tool (spawn a child agent)",
+        async (ctx, config) => ctx.plugin(ToolSubagent, config as never),
+        { provider: "spawn", toolName: "subagent", backgroundMode: "continuable" },
+      ),
+      tool(
+        "tool-subagent-fork",
+        "@deepseek-ai/dsh-tool-subagent",
+        "subagent_fork tool (child inheriting this history)",
+        async (ctx, config) => ctx.plugin(ToolSubagent, config as never),
+        { provider: "fork", toolName: "subagent_fork", backgroundMode: "one-shot" },
+      ),
     );
     if (preset === "code") {
       // Code Mode presentation backed by the official worker runtime (via the

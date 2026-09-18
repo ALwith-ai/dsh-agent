@@ -50,7 +50,20 @@ describe("plugin manifest", () => {
   test("disabling the web trio removes web_search from the composed tool surface", async () => {
     expect(
       await toolNames({ disabled: ["tool-web", "web-search-deepseek", "web"] }),
-    ).toEqual(["bash", "edit", "glob", "grep", "read", "todo_write", "write"]);
+    ).toEqual([
+      "bash",
+      "edit",
+      "glob",
+      "grep",
+      "interrupt_agent",
+      "list_agents",
+      "read",
+      "send_message",
+      "subagent",
+      "subagent_fork",
+      "todo_write",
+      "write",
+    ]);
   });
 
   test("disabling a core row fails loud", () => {
