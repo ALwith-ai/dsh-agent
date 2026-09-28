@@ -1,4 +1,4 @@
-// Vendored from deepseek-harness tag dsh-v0.1.5-rc.2 (packages/session/session-persistence/tests/contract.ts); local patch: bun:test imports, package import path, ts-nocheck.
+// Vendored from deepseek-harness tag dsh-v0.2.0-rc.1; local patch: bun:test and package imports.
 // @ts-nocheck
 /**
  * Reusable handle contract test for any {@link SessionPersistence} backend. A

@@ -114,7 +114,7 @@ def main():
     output = Path(tempfile.mkdtemp(prefix="dsh-agent-package-", dir=args.output_dir)).resolve()
     print(f"Artifacts: {output}", flush=True)
     repository = Path(__file__).resolve().parents[1]
-    run(["npm", "pack", "--ignore-scripts", "--pack-destination", str(output)], repository, output / "pack.txt", 30)
+    run(["bun", "scripts/pack.ts", str(output / "dsh-agent.tgz")], repository, output / "pack.txt", 30)
     archives = list(output.glob("*.tgz"))
     assert len(archives) == 1, archives
     run(["tar", "-xzf", str(archives[0]), "-C", str(output)], output, output / "extract.txt", 30)

@@ -562,7 +562,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
           },
         })
       } else if (event.type === "tool/result") {
-        const result = event.data.message.content[0]
+        const result = event.data.message
         notify({
           sessionId: record.agent.session.id,
           update: {

@@ -1,6 +1,6 @@
 /**
  * Code Mode (PTC) preset: the wire presents a single run_code tool backed by
- * the official worker runtime (Bun-patched); a model-written program executes
+ * the official PTC process runtime adapted for Bun; a model-written program executes
  * and its result returns through the ordinary tool pipeline.
  */
 
@@ -33,7 +33,7 @@ function runCodeCall(program: string): StreamChunk[] {
 describe("code preset (PTC)", () => {
   test("wire presents run_code only; a program executes through the pipeline", async () => {
     const adapter = new MockAdapter([
-      runCodeCall("console.log(\"from program\"); return 6 * 7"),
+      runCodeCall("const { versions } = await import('node:process'); console.log('bun-runtime:' + versions.bun); return 6 * 7"),
       textResponse("done"),
     ])
     const ctx = await composeRuntime({
@@ -75,16 +75,17 @@ describe("code preset (PTC)", () => {
     const first = adapter.requests.at(0) as { tools?: Array<{ name: string }> }
     expect((first.tools ?? []).map(tool => tool.name)).toEqual(["run_code"])
 
-    // The program ran in the worker: its return value and log flow back as the tool result.
+    // The program ran in a Bun process: its return value and log flow back as the tool result.
     const frames = updates.filter(update => update.sessionUpdate === "tool_call_update") as Array<
       CapturedUpdate & { status?: string; content?: Array<{ content?: { text?: string } }> }
     >
-    expect(frames.at(-1)?.status).toBe("completed")
+    expect(frames.at(-1)?.status, JSON.stringify(frames)).toBe("completed")
     const resultText = frames
       .flatMap(frame => frame.content ?? [])
       .map(entry => entry.content?.text ?? "")
       .join(" ")
     expect(resultText).toContain("42")
+    expect(resultText).toContain(`bun-runtime:${process.versions.bun}`)
     await ctx.fiber.dispose()
   }, 30000)
 })

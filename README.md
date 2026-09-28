@@ -6,7 +6,7 @@ An **interactive ACP v2 bridge** for [DeepSeek Harness](https://github.com/deeps
 
 Maintained by [ALwith](https://github.com/ALwith-ai); **ALwith Desktop is its reference client** (the desktop form of dsh). Upstream's own ACP surface is deliberately automation-only (fresh sessions, committed output only); this bridge provides the interactive side.
 
-> Status: developer preview. Covers `session/new` + prompt + streaming + run-state reporting + cancel + `session/resume` (live-first reattach, cold resume from JSONL persistence, client-driven `replayFrom` history replay) + sandbox-first tools with escalation approvals + automatic context compaction (`dsh-compaction-basic`: step pressure and context-overflow recovery) with the human `/compact` command and tool-result pruning + delegation tools (`subagent` / `subagent_fork` / `send_message` / `list_agents` / `interrupt_agent` over in-process spawn and fork backends) + in-session model switching (`session/set_config_option`) + LLM session titles (deterministic first, one background generate upgrades) + all dsh presets (`standard` / `minimal` / `anchored` / `code` PTC on the Bun-patched official worker runtime / `cordis` creator with the vm-realm dynamic-plugin toolset and the bundled `cordis-plugin-development` skill) + host-facing `plugins` / `sessions` management CLIs + a multi-provider seat (`ALWITH_DSH_PI_PROVIDERS`: pi-ai catalog routes — openai / anthropic / google / xai / … — mounted beside the DeepSeek adapter).
+> Status: developer preview. Covers `session/new` + prompt + streaming + run-state reporting + cancel + `session/resume` (live-first reattach, cold resume from JSONL persistence, client-driven `replayFrom` history replay) + sandbox-first tools with escalation approvals + automatic context compaction (`dsh-compaction-basic`: step pressure and context-overflow recovery) with the human `/compact` command and tool-result pruning + delegation tools (`subagent` / `subagent_fork` / `send_message` / `list_agents` / `interrupt_agent` over in-process spawn and fork backends) + in-session model switching (`session/set_config_option`) + LLM session titles (deterministic first, one background generate upgrades) + all dsh presets (`standard` / `minimal` / `anchored` / `code` PTC on the official process runtime adapted for Bun / `cordis` runtime inspection with the read-only Cordis toolset and the bundled `cordis-plugin-development` skill) + host-facing `plugins` / `sessions` management CLIs + a multi-provider seat (`ALWITH_DSH_PI_PROVIDERS`: pi-ai catalog routes — openai / anthropic / google / xai / … — mounted beside the DeepSeek adapter).
 
 ## Layout
 
@@ -23,14 +23,14 @@ Maintained by [ALwith](https://github.com/ALwith-ai); **ALwith Desktop is its re
 
 ## Run
 
-Requires Bun (validated with 1.4.0); Node.js is not a supported sidecar runtime. In a repository checkout, install the pinned dependency set with `bun install --frozen-lockfile`.
+Requires Bun (validated with 1.4.2); Node.js is not a supported sidecar runtime. In a repository checkout, install the pinned dependency set with `bun install --frozen-lockfile`.
 
 ```sh
 DEEPSEEK_API_KEY=… bun src/main.ts   # ACP v2 server over stdio
 bun test                              # protocol tests with a mock adapter; no real model calls
 ```
 
-`session/resume` semantics: an omitted `replayFrom` means context-only restore; `{ type: "start" }` replays the whole conversation as `session/update` frames. Exactly one persistence provider is mounted per process, chosen by `ALWITH_DSH_PERSISTENCE`: `dsh` (default) keeps dsh's own JSONL logs under `$ALWITH_DSH_SESSIONS_ROOT` (default `~/.dsh-agent/sessions`); `alwith` stores each session as an ALwith session record (`$ALWITH_DSH_PROJECTS_DIR/<project key>/<sessionId>.jsonl`, plain JSONL compatible with Claude Code messages, with every dsh event kept verbatim). With `alwith`, `session/resume` also continues records the ALwith CLI wrote: their messages, tool calls and results are rebuilt into dsh events; thinking blocks never enter the model context. Both providers implement the dsh 0.1.5 handle seam (single-writer ownership per session, live-event routing with a batched durability barrier, torn-tail repair before the first append, fail-closed vocabulary) and pass the upstream persistence contract suite; `alwith` records written by dsh 0.1.2 are lifted on read.
+`session/resume` semantics: an omitted `replayFrom` means context-only restore; `{ type: "start" }` replays the whole conversation as `session/update` frames. Exactly one persistence provider is mounted per process, chosen by `ALWITH_DSH_PERSISTENCE`: `dsh` (default) keeps dsh's own JSONL logs under `$ALWITH_DSH_SESSIONS_ROOT` (default `~/.dsh-agent/sessions`); `alwith` stores each session as an ALwith session record (`$ALWITH_DSH_PROJECTS_DIR/<project key>/<sessionId>.jsonl`, plain JSONL compatible with Claude Code messages, with every dsh event kept verbatim). With `alwith`, `session/resume` also continues records the ALwith CLI wrote: their messages, tool calls and results are rebuilt into dsh events; thinking blocks never enter the model context. Both providers implement the dsh 0.2.0-rc.1 handle seam (single-writer ownership per session, live-event routing with a batched durability barrier, torn-tail repair before the first append, fail-closed vocabulary) and pass the upstream persistence contract suite.
 
 Turn completion, including cancellation, waits for agent convergence and the session durability checkpoint before reporting `idle`. A tool that ignores cancellation can delay this boundary. Prompts arriving while cancellation settles are rejected; an empty prompt during an active turn does not end it. `session/close` drains pending events before releasing the agent and cancels background title work. Model and checkpoint failures report `_error`, so hosts can keep failures actionable.
 
@@ -58,3 +58,9 @@ Core rows (session, llm, sandbox, approvals, …) cannot be disabled, and disabl
 ## License
 
 [MIT](LICENSE); portions adapted from upstream `@deepseek-ai/dsh-acp` are noted in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Harness 0.2.0-rc.1
+
+The entire Harness release set is pinned to 0.2.0-rc.1. DeepSeek API-key routing uses `dsh-llm-deepseek-api-key`; tool results use the current flat tool-role message contract. Cordis exposes `cordis_inspect_list` and `cordis_inspect_query`; removed authoring tools are not emulated.
+
+The PTC host and child both run Bun. `src/ptc-bun-loader.ts` adapts the official process runtime with amaro type stripping and Bun-compatible inherited-pipe streams. No Node executable or old worker fork is required. File confinement and elapsed deadlines remain enforced; the upstream V8 old-generation heap setting is not enforced by Bun.

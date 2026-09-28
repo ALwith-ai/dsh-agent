@@ -21,7 +21,7 @@ respective licenses.
 
 `skills/cordis-plugin-development/` is vendored verbatim from
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (MIT),
-path `apps/cli/config/agent-presets/cordis/skills/cordis-plugin-development/`.
+path `packages/preset/agent-preset/skills/cordis-plugin-development/`.
 
 ---
 

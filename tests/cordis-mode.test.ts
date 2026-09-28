@@ -1,8 +1,4 @@
-/**
- * Creator (cordis) preset: the agent defines a model-written plugin and runs
- * it against the live runtime through the self-referential toolset — the
- * node:vm host realm working under Bun is the point of this test.
- */
+/** Cordis inspection tools expose the live Bun runtime through ACP. */
 
 import { describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
@@ -34,37 +30,31 @@ function toolCall(id: string, name: string, args: object): StreamChunk[] {
 function lastToolResultText(options: GenerateOptions): string {
   const texts: string[] = []
   for (const message of options.messages ?? []) {
-    for (const block of (message as { content?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }> }).content ?? []) {
-      if (block.type === "tool-result") {
-        for (const inner of block.content ?? []) if (inner.type === "text" && inner.text) texts.push(inner.text)
-      }
+    if (message.role !== "tool") continue
+    for (const block of message.content) {
+      if (block.type === "text") texts.push(block.text)
     }
   }
   return texts.at(-1) ?? ""
 }
 
 describe("cordis preset (creator)", () => {
-  test("cordis_define then cordis_run executes a model-written plugin in the vm realm", async () => {
+  test("lists runtime providers and queries the active agent tool catalog", async () => {
     const script: ScriptEntry[] = [
-      toolCall("call-1", "cordis_define", {
-        plugin: { kind: "new", idPrefix: "probe" },
-        name: "probe",
-        purpose: "prove the dynamic runner works",
-        // A plain JavaScript function body returning the Host-half plugin.
-        code: { host: 'return { name: "probe", apply(ctx) { console.log("dynamic plugin alive") } }' },
-      }),
+      toolCall("call-1", "cordis_inspect_list", {}),
       options => {
-        const receipt = lastToolResultText(options)
-        // Receipt reads: `Defined <pluginId>/<packageId> (<name>); ...`
-        const minted = receipt.match(/Defined ([\w-]+)\/([\w-]+)/)
-        const pluginId = minted?.[1]
-        const packageId = minted?.[2]
-        if (!pluginId || !packageId) {
-          throw new Error(`define receipt did not carry ids: ${receipt.slice(0, 300)}`)
-        }
-        return toolCall("call-2", "cordis_run", { pluginId, packageId, mode: "run" })
+        const receipt = JSON.parse(lastToolResultText(options))
+        expect(receipt.providers).toEqual(expect.arrayContaining([expect.objectContaining({ id: "Tool" })]))
+        return toolCall("call-2", "cordis_inspect_query", { platform: "host", provider: "Tool", method: "listTools" })
       },
-      textResponse("mounted"),
+      options => {
+        const receipt = JSON.parse(lastToolResultText(options))
+        expect(receipt.data.tools).toEqual(expect.arrayContaining([
+          expect.objectContaining({ name: "cordis_inspect_list" }),
+          expect.objectContaining({ name: "read" }),
+        ]))
+        return textResponse("inspected")
+      },
     ]
     const adapter = new MockAdapter(script)
     const ctx = await composeRuntime({
@@ -99,17 +89,15 @@ describe("cordis preset (creator)", () => {
       capabilities: {},
     })
     const { sessionId } = await connection.agent.request("session/new", { cwd: tmpdir() })
-    await connection.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "author a plugin" }] })
+    await connection.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "inspect the runtime" }] })
     await untilFrame(() => states().some(entry => (entry as { state?: string }).state === "idle"), 20000)
 
     const frames = updates.filter(update => update.sessionUpdate === "tool_call_update") as Array<
       CapturedUpdate & { name?: string; status?: string; content?: Array<{ content?: { text?: string } }> }
     >
-    const define = frames.filter(frame => frame.name === "cordis_define" || frames.indexOf(frame) < 2)
-    expect(frames.at(0)?.name).toBe("cordis_define")
+    expect(frames.at(0)?.name).toBe("cordis_inspect_list")
     const statuses = frames.map(frame => frame.status).filter(Boolean)
-    // Both tool calls settled; the run either completed or reported a precise
-    // failure — the assertion below requires full success.
+    // Both read-only tool calls must complete successfully.
     const texts = frames
       .flatMap(frame => frame.content ?? [])
       .map(entry => entry.content?.text ?? "")

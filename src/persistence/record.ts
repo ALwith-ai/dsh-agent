@@ -129,9 +129,12 @@ function blockText(block: ContentBlock): string | undefined {
       // Only a mounted AttachmentStore can put an image into a dsh session; the record must then carry
       // the bytes (Claude Code `image` block), not a paraphrase. No store is mounted in this composition.
       throw new Error(`image attachment ${block.attachment.attachmentId} cannot be recorded: no attachment store is mounted`)
+    case "file":
+      throw new Error("file content cannot be recorded: no attachment store is mounted")
     case "reasoning":
     case "tool-call":
-    case "tool-result":
+    case "tool-addition":
+    case "tool-removal":
       return undefined
   }
 }
@@ -225,8 +228,7 @@ function projectAssistantMessage(context: EncodeContext, state: EncodeState, eve
 }
 
 function projectToolResult(context: EncodeContext, state: EncodeState, event: SessionEvent<"tool/result">): string | undefined {
-  const block = event.data.message?.content?.[0]
-  if (block === undefined || block.type !== "tool-result") return undefined
+  const block = event.data.message
   const text = block.content.map(blockText).filter((part): part is string => part !== undefined).join("\n")
   return claudeMessageLine(
     context,
@@ -482,8 +484,10 @@ class Reconstruction {
             step: this.step,
             message: {
               id: MessageId(line.uuid ?? randomUUID()),
-              role: "user",
-              content: [{ type: "tool-result", toolCallId: ToolCallId(result.tool_use_id), content: [{ type: "text", text }], isError: result.is_error === true }],
+              role: "tool",
+              toolCallId: ToolCallId(result.tool_use_id),
+              isError: result.is_error === true,
+              content: [{ type: "text", text }],
               source: { kind: "tool", callId: ToolCallId(result.tool_use_id) },
             },
           },

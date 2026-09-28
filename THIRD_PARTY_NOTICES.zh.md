@@ -19,7 +19,7 @@ Copyright (c) 2026 DeepSeek
 
 `skills/cordis-plugin-development/` 逐字 vendor 自
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)(MIT),
-路径 `apps/cli/config/agent-presets/cordis/skills/cordis-plugin-development/`。
+路径 `packages/preset/agent-preset/skills/cordis-plugin-development/`。
 
 ---
 

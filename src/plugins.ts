@@ -39,7 +39,7 @@ import ApprovalService from "@deepseek-ai/dsh-user-approval";
 // Namespace imports rather than default: a module-plugin default export drops
 // `inject` (see dsh postmortem 0001). Service classes above carry inject as a
 // static and are safe as defaults.
-import * as LlmDeepseek from "@deepseek-ai/dsh-llm-deepseek";
+import * as LlmDeepseek from "@deepseek-ai/dsh-llm-deepseek-api-key";
 import * as LlmPiAi from "@deepseek-ai/dsh-llm-pi-ai";
 import LocalCredentialProvider from "@deepseek-ai/dsh-credentials-local";
 import AuthorizationService from "@deepseek-ai/dsh-authorization";
@@ -52,11 +52,11 @@ import * as ToolFsSearch from "@deepseek-ai/dsh-tool-fs-search";
 import * as ToolWeb from "@deepseek-ai/dsh-tool-web";
 import * as WebSearchDeepseek from "@deepseek-ai/dsh-web-search-deepseek";
 import * as AnchoredToolBootstrap from "./vendor/anchored-tool-bootstrap.mjs";
-// Fork of @deepseek-ai/dsh-code-runtime-worker-thread (same version): strips TypeScript
-// types via amaro under Bun. Upstream takes no PRs; see github.com/nyssance/dsh-code-runtime-worker-thread.
-import CodeRuntimeWorker from "@nyssance/dsh-code-runtime-worker-thread";
+// Official PTC process runtime with the Bun TypeScript-stripping adaptation.
+import BunPtcRuntime from "./ptc-runtime-bun.ts";
 import CordisHostRunner from "@deepseek-ai/dsh-cordis-host-runner";
 import * as ToolCordis from "@deepseek-ai/dsh-tool-cordis";
+import * as CordisInspectProviders from "@deepseek-ai/dsh-tool-cordis/host";
 import SkillRegistry from "@deepseek-ai/dsh-skill";
 import * as SkillFilesystem from "@deepseek-ai/dsh-skill-filesystem";
 import * as ToolSkill from "@deepseek-ai/dsh-tool-skill";
@@ -94,9 +94,8 @@ const BUNDLED_SKILLS_DIR = fileURLToPath(
  */
 const CORDIS_PERSONA =
   "You are a coding agent running on the DeepSeek Harness.\n\n" +
-  "You can read and extend the harness you run on. Its composition is Cordis: every capability " +
-  "is a plugin, and this session carries the Cordis toolset — inspect the live runtime, define " +
-  "dynamic plugins, and activate them.\n\n" +
+  "Its composition is Cordis: every capability is a plugin. Use the read-only Cordis tools " +
+  "to inspect runtime APIs before writing plugin code.\n\n" +
   "Load the `cordis-plugin-development` skill before defining or changing a plugin.";
 export type PermissionMode =
   "read-only" | "workspace-write" | "danger-full-access";
@@ -283,7 +282,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
     ),
     core(
       "llm-deepseek",
-      "@deepseek-ai/dsh-llm-deepseek",
+      "@deepseek-ai/dsh-llm-deepseek-api-key",
       "DeepSeek model adapter ($DEEPSEEK_API_KEY)",
       async (ctx, config) => ctx.plugin(LlmDeepseek, config as never),
     ),
@@ -665,32 +664,37 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       ),
     );
     if (preset === "code") {
-      // Code Mode presentation backed by the official worker runtime (via the
-      // @nyssance fork: Bun lacks node:module.stripTypeScriptTypes).
+      // PTC host and sandboxed execution processes both run on Bun.
       rows.push(
         tool(
-          "code-runtime-worker-thread",
-          "@deepseek-ai/dsh-code-runtime-worker-thread",
-          "Code Mode worker runtime (run_code)",
-          async (ctx, config) => ctx.plugin(CodeRuntimeWorker, config as never),
+          "ptc-runtime-bun",
+          "@deepseek-ai/dsh-ptc-runtime-node",
+          "PTC process runtime on Bun (run_code)",
+          async (ctx, config) => ctx.plugin(BunPtcRuntime, config as never),
         ),
       );
     }
     if (preset === "cordis") {
-      // dsh's creator preset: the self-referential Cordis toolset (define /
-      // run / inspect model-written plugins in a node:vm realm). Trust
-      // boundary, not a sandbox — mirrors the preset's own header.
+      // Upstream Cordis now exposes read-only discovery of the live runtime.
       rows.push(
         tool(
           "cordis-host-runner",
           "@deepseek-ai/dsh-cordis-host-runner",
-          "node:vm realm host for model-written plugins",
+          "Host registry for Cordis runtime inspection",
           async (ctx, config) => ctx.plugin(CordisHostRunner, config as never),
+        ),
+        tool(
+          "cordis-inspect-providers",
+          "@deepseek-ai/dsh-tool-cordis/host",
+          "Host runtime inspection providers",
+          async (ctx, config) => ctx.plugin(CordisInspectProviders, config as never),
+          undefined,
+          ["cordis-host-runner"],
         ),
         tool(
           "tool-cordis",
           "@deepseek-ai/dsh-tool-cordis",
-          "cordis_define / cordis_run / cordis_inspect tools",
+          "Read-only Cordis runtime inspection tools",
           async (ctx, config) => ctx.plugin(ToolCordis, config as never),
           undefined,
           ["cordis-host-runner"],

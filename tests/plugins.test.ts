@@ -171,7 +171,8 @@ describe("cordis skill bundle", () => {
       .schemas(ctx)
       .map((schema) => schema.name);
     expect(names).toContain("skill");
-    expect(names).toContain("cordis_define");
+    expect(names).toContain("cordis_inspect_list");
+    expect(names).toContain("cordis_inspect_query");
     const skills = await (
       ctx as unknown as {
         skills: { list: () => Promise<Array<{ name: string }>> };

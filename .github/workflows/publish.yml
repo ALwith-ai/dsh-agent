@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.2
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun run test
@@ -31,8 +31,7 @@ jobs:
           fi
           case "$version" in *-*) tag=next ;; *) tag=latest ;; esac
           echo "NPM_DIST_TAG=$tag" >> "$GITHUB_ENV"
-          # bun pm pack drops bun.lock from the tarball; npm pack honours "files" (desktop needs the lock for --frozen-lockfile).
-          mkdir -p dist && npm pack --ignore-scripts --pack-destination ./dist >/dev/null && mv ./dist/*.tgz ./dist.tgz
+          bun scripts/pack.ts ./dist.tgz
       - name: Require the published dependency lock
         run: tar -xOf ./dist.tgz package/bun.lock | cmp bun.lock -
       # bun publish cannot do OIDC; npm 11.5+ (bundled with Node 24) can.
