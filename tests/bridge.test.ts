@@ -76,11 +76,13 @@ describe("dsh-agent bridge", () => {
       sessionId,
       prompt: [{ type: "text", text: "hi" }],
     })
-    // v2: the prompt response body is _meta-only; completion travels on the idle state frame
-    expect(Object.keys(response)).toEqual([])
+    expect(response.messageId).toBeString()
     // Notifications are asynchronous; the idle frame is last on the wire, so once
     // it lands every chunk before it has landed too.
     await untilFrame(() => h.states().at(-1)?.state === "idle")
+    expect(h.updates.filter(update => update.sessionUpdate === "user_message")).toEqual([
+      expect.objectContaining({ messageId: response.messageId, content: [{ type: "text", text: "hi" }] }),
+    ])
     const chunks = h.updates.filter(update => update.sessionUpdate === "agent_message_chunk")
     // textResponse yields per-character deltas: this must be a multi-frame stream, not one full-text frame
     expect(chunks.length).toBeGreaterThan(1)

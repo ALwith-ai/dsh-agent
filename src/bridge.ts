@@ -9,7 +9,7 @@
  *
  * v2 contract notes:
  * - turn completion is announced by an `idle` state frame carrying
- *   `stopReason`; the `session/prompt` response body is `_meta`-only;
+ *   `stopReason`; the `session/prompt` response identifies the echoed user message;
  * - reporting discipline mirrors alwith-cli, the authoritative v2
  *   implementation: `running` when the turn starts, `requires_action` while a
  *   client answer is pending, closing `idle` at settlement;
@@ -824,10 +824,12 @@ export function apply(ctx: Context, config: AcpConfig): void {
         throw invalidParams("only text and resource_link prompt content is supported")
       }
       const text = acpPromptToText(params.prompt)
+      const message = createUserMessage({ content: [{ type: "text", text }], source: { kind: "user" } })
       if (text.trim().length === 0) {
         // Mirror alwith-cli: an empty prompt reports idle(end_turn) and returns; it is not a protocol error.
+        reportUserMessage(record, message.id, text)
         if (record.inflight === undefined) reportIdle(record, "end_turn")
-        return {}
+        return { messageId: MessageId(message.id) }
       }
 
       // Bridge contract: never drive a retired agent — a loop-only reload disposes agents while bridge records survive.
@@ -845,7 +847,6 @@ export function apply(ctx: Context, config: AcpConfig): void {
           update: { sessionUpdate: "session_info_update", title },
         })
       }
-      const message = createUserMessage({ content: [{ type: "text", text }], source: { kind: "user" } })
       if (record.inflight !== undefined) {
         // Another prompt while a turn is running: it enters the dsh inbox and
         // is claimed by the driver at the next step boundary (approximating
@@ -853,7 +854,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
         // the in-flight turn's idle frame.
         record.agent.followup(message)
         reportUserMessage(record, message.id, text)
-        return {}
+        return { messageId: MessageId(message.id) }
       }
       await new Promise<void>((resolve, reject) => {
         const inflight: NonNullable<SessionRecord["inflight"]> = {
@@ -877,7 +878,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
         // Settlement waits for whole-agent idle: a correlated turn/end arms
         // endReason first; a turnless slot (admission discarded the prompt)
         // stays cancelled. Since v2 the stop reason travels on the idle state
-        // frame; the prompt response body is _meta-only.
+        // frame; the response identifies the accepted user message.
         void record.agent.whenIdle().then(async () => {
           if (record.inflight !== inflight) return
           // Idle is a host-visible durability boundary: the process may exit as
@@ -903,7 +904,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
       })
       // First turn settled: upgrade the deterministic title in the background.
       if (firstPrompt) void refineTitle(record, text)
-      return {}
+      return { messageId: MessageId(message.id) }
     })
     .onRequest("session/close", async (context): Promise<CloseSessionResponse> => {
       const params: CloseSessionRequest = context.params

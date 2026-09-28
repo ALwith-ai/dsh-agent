@@ -32,6 +32,8 @@ bun test                              # mock 适配器协议测试,不打真模�
 
 `session/resume` 语义:`replayFrom` 省略 = 只恢复上下文;`{ type: "start" }` = 整段对话重放为 `session/update` 帧。每个进程只挂一个持久化 provider,由 `ALWITH_DSH_PERSISTENCE` 选择:`dsh`(默认)把 dsh 自己的 JSONL 日志存在 `$ALWITH_DSH_SESSIONS_ROOT`(默认 `~/.dsh-agent/sessions`);`alwith` 把每个会话存成 ALwith 会话记录(`$ALWITH_DSH_PROJECTS_DIR/<项目键>/<sessionId>.jsonl`,明文 JSONL,兼容 Claude Code 消息,dsh 事件原样保留)。选 `alwith` 时 `session/resume` 也能接续 ALwith CLI 写的记录:消息、工具调用与结果重建成 dsh 事件,思考块不进模型上下文。两个 provider 都实现 dsh 0.2.0-rc.1 的句柄合同(每会话单写者、实时事件路由与批量落盘屏障、首次追加前修复撕裂尾部、词表 fail-closed),并通过上游持久化契约测试。
 
+`session/prompt` 返回已接收用户消息的 `messageId`，与实时 `user_message` 通知及保留的历史记录一致。线上协议使用 ACP SDK 1.5.1 验证。
+
 轮次结束（包括取消）在报告 `idle` 前等待 Agent 停稳及会话持久化检查点。忽略取消信号的工具可能延迟这一边界。取消尚未结束时拒绝新提示；活跃轮次中的空提示不会结束该轮。`session/close` 在释放 Agent 前排空待写事件，并取消后台标题任务。模型与检查点失败报告 `_error`，宿主据此保持失败待处理。
 
 提示会等待已有切换结束；切换期间关闭会话会阻止替代 Agent 发布。切换先刷盘,未动过的空会话也会落盘,所以切换失败后任何会话都可通过 `session/resume` 恢复。
