@@ -33,10 +33,10 @@ describe("session config options", () => {
     try {
       await h.initialize()
       const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
-      await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "one" }] })
+      await h.promptAndWait( { sessionId, prompt: [{ type: "text", text: "one" }] })
       await untilFrame(() => h.updates.some(update => update.sessionUpdate === "usage_update"))
       await h.agent.request("session/set_config_option", { sessionId, configId: "model", type: "id", value: "mock-pro" })
-      await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "two" }] })
+      await h.promptAndWait( { sessionId, prompt: [{ type: "text", text: "two" }] })
       await untilFrame(() => h.updates.filter(update => update.sessionUpdate === "usage_update").length === 2)
       expect(h.updates.flatMap(update => update.sessionUpdate === "usage_update" ? [update.size] : [])).toEqual([8192, 32768])
     } finally {
@@ -61,7 +61,7 @@ describe("session config options", () => {
     })
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
-    await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "one" }] })
+    await h.promptAndWait( { sessionId, prompt: [{ type: "text", text: "one" }] })
     await untilFrame(() => h.states().filter(entry => entry.state === "idle").length >= 1)
 
     // Schema shape: a select option is set with `type: "id"` (ALwith Desktop sends exactly this).
@@ -75,7 +75,7 @@ describe("session config options", () => {
     const echo = h.updates.filter(update => update.sessionUpdate === "config_option_update")
     expect(echo.length).toBe(1)
 
-    await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "two" }] })
+    await h.promptAndWait( { sessionId, prompt: [{ type: "text", text: "two" }] })
     await untilFrame(() => h.states().filter(entry => entry.state === "idle").length >= 2)
     // The switched agent derives history from the same log and runs on the new model.
     const last = h.adapter.requests.at(-1) as { model?: string } | undefined

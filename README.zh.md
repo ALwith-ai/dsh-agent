@@ -32,7 +32,7 @@ bun test                              # mock 适配器协议测试,不打真模�
 
 `session/resume` 语义:`replayFrom` 省略 = 只恢复上下文;`{ type: "start" }` = 整段对话重放为 `session/update` 帧。每个进程只挂一个持久化 provider,由 `ALWITH_DSH_PERSISTENCE` 选择:`dsh`(默认)把 dsh 自己的 JSONL 日志存在 `$ALWITH_DSH_SESSIONS_ROOT`(默认 `~/.dsh-agent/sessions`);`alwith` 把每个会话存成 ALwith 会话记录(`$ALWITH_DSH_PROJECTS_DIR/<项目键>/<sessionId>.jsonl`,明文 JSONL,兼容 Claude Code 消息,dsh 事件原样保留)。选 `alwith` 时 `session/resume` 也能接续 ALwith CLI 写的记录:消息、工具调用与结果重建成 dsh 事件,思考块不进模型上下文。两个 provider 都实现 dsh 0.2.0-rc.1 的句柄合同(每会话单写者、实时事件路由与批量落盘屏障、首次追加前修复撕裂尾部、词表 fail-closed),并通过上游持久化契约测试。
 
-`session/prompt` 返回已接收用户消息的 `messageId`，与实时 `user_message` 通知及保留的历史记录一致。线上协议使用 ACP SDK 1.5.1 验证。
+`session/prompt` 在 Harness 将用户消息插入模型可见历史后立即返回 `messageId`，与实时 `user_message` 通知及保留的历史记录一致。回执不等待生成或轮末持久化检查点。排队消息若在插入前被取消，请求直接拒绝，不伪造回执。客户端用回执关联用户消息，并等待随后对应的 `idle` 事件判断完成。线上协议使用 ACP SDK 1.5.1 验证。
 
 轮次结束（包括取消）在报告 `idle` 前等待 Agent 停稳及会话持久化检查点。忽略取消信号的工具可能延迟这一边界。取消尚未结束时拒绝新提示；活跃轮次中的空提示不会结束该轮。`session/close` 在释放 Agent 前排空待写事件，并取消后台标题任务。模型与检查点失败报告 `_error`，宿主据此保持失败待处理。
 
@@ -40,7 +40,7 @@ bun test                              # mock 适配器协议测试,不打真模�
 
 取消与关闭会主动丢弃待处理输入。没有私有的历史注入扩展:接续走 `session/resume`,由挂载的持久化 provider 提供。适配器必须响应中止信号，否则取消、关闭和退出都可能停滞。宿主可以设置进程退出期限，但强制终止可能丢失尚未刷盘的日志，恢复后历史可能不完整。后台标题收到中止信号后不会阻塞关闭。保留标准 ACP 错误码；面向人的错误消息不是稳定的机器解析接口。
 
-在仓库检出目录中运行 `python3 scripts/verify-package.py` 可在本地验证打包产物。发布流程和验证器均使用 `npm pack` 将 `bun.lock` 纳入 tarball。验证器要求解包后的锁文件与仓库字节一致并记录 SHA256，执行生产依赖冻结安装（可能需要网络及原生构建环境），再通过声明的可执行入口对五个预设执行无需凭据的 ACP 检查。超时保护属于验证器，不属于桥接协议。日志和产物保留在输出路径；安装失败不会被绕过。`packageManager` 字段记录已验证的工具链，不强制运行时版本。发布包自带 Desktop 安装所需的锁文件。这不证明跨平台或真实模型厂商兼容性。当前锁定集合存在 Cordis peer 警告（`4.0.1` 与上游要求的 `^4.0.2` 不匹配）；已测试路径通过，但整套依赖对齐需要另行决策和验证。
+在仓库检出目录中运行 `python3 scripts/verify-package.py` 可在本地验证打包产物。发布流程和验证器均使用 `bun scripts/pack.ts`，将 `bun.lock` 补入 Bun 生成的 tarball。验证器要求解包后的锁文件与仓库字节一致并记录 SHA256，执行生产依赖冻结安装（可能需要网络及原生构建环境），再通过声明的可执行入口对五个预设执行无需凭据的 ACP 检查。超时保护属于验证器，不属于桥接协议。日志和产物保留在输出路径；安装失败不会被绕过。`packageManager` 字段记录已验证的工具链，不强制运行时版本。发布包自带 Desktop 安装所需的锁文件。这不证明跨平台或真实模型厂商兼容性。
 
 ## 插件
 

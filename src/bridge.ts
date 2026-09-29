@@ -105,13 +105,14 @@ interface SessionRecord {
   dispose: () => Promise<void>
   /** In-flight prompt and its captured turn number for exact settlement. */
   inflight: {
-    resolve: () => void
-    reject: (error: Error) => void
+    revision: number
     messageId: string
     turn: number | undefined
     endReason: TurnEndReason | undefined
     cancelled: boolean
   } | undefined
+  /** Requests awaiting a model-visible user/message insertion, keyed by the Harness ID. */
+  pendingPrompts: Map<string, { text: string; resolve: (response: PromptResponse) => void; reject: (error: Error) => void }>
   /** Pending permission requests; while > 0 the reported state is requires_action. */
   pendingPermissions: number
   /** Last emitted state_update value, deduplicating consecutive identical frames. */
@@ -218,11 +219,11 @@ export function apply(ctx: Context, config: AcpConfig): void {
     })
   }
 
-  const reportIdle = (record: SessionRecord, stopReason: StopReason): void => {
+  const reportIdle = (record: SessionRecord, stopReason: StopReason, error?: string): void => {
     record.lastState = "idle"
     notify({
       sessionId: record.agent.session.id,
-      update: { sessionUpdate: "state_update", state: "idle", stopReason },
+      update: { sessionUpdate: "state_update", state: "idle", stopReason, ...(error === undefined ? {} : { _meta: { alwith: { error } } }) },
     })
   }
 
@@ -377,7 +378,8 @@ export function apply(ctx: Context, config: AcpConfig): void {
     const inflight = record.inflight
     if (inflight === undefined) return
     record.inflight = undefined
-    inflight.resolve()
+    for (const pending of record.pendingPrompts.values()) pending.reject(new RequestError(-32800, "Prompt cancelled before insertion"))
+    record.pendingPrompts.clear()
   }
 
   /**
@@ -436,6 +438,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
       agent: handle.agent,
       dispose: () => handle.dispose(),
       inflight: undefined,
+      pendingPrompts: new Map(),
       pendingPermissions: 0,
       lastState: undefined,
       titled: true, // a resumed session already carries its name on the client
@@ -540,7 +543,14 @@ export function apply(ctx: Context, config: AcpConfig): void {
     const record = sessions.get(session.header.id)
     if (record === undefined || record.agent.session !== session) return
     try {
-      if (event.type === "assistant/message") {
+      if (event.type === "user/message") {
+        const pending = record.pendingPrompts.get(event.data.id)
+        if (pending !== undefined) {
+          record.pendingPrompts.delete(event.data.id)
+          reportUserMessage(record, event.data.id, pending.text)
+          pending.resolve({ messageId: MessageId(event.data.id) })
+        }
+      } else if (event.type === "assistant/message") {
         for (const block of event.data.message.content) {
           if (block.type === "image") throw noImageAttachments(block.attachment.attachmentId)
         }
@@ -604,13 +614,21 @@ export function apply(ctx: Context, config: AcpConfig): void {
     if (inflight !== undefined && inflight.messageId === message.id) inflight.turn = turn
   })
 
+  ctx.on("agent/inbox/discarded", ({ agent, message }) => {
+    const record = ownedRecord(agent)
+    if (record === undefined) return
+    const pending = record.pendingPrompts.get(message.id)
+    if (pending === undefined) return
+    record.pendingPrompts.delete(message.id)
+    pending.reject(new RequestError(-32800, "Prompt discarded before insertion"))
+  })
+
   ctx.on("agent/error", ({ agent, turn, error }) => {
     const record = ownedRecord(agent)
     const inflight = record?.inflight
     if (record === undefined || inflight === undefined || inflight.turn === turn) return
-    record.inflight = undefined
-    reportIdle(record, "_error")
-    inflight.reject(internalError(`turn failed: ${errorChain(error)}`))
+    settlePrompt(record)
+    reportIdle(record, "_error", `turn failed: ${errorChain(error)}`)
   })
 
   // One-shot permission decisions via the v2 subject scheme (required title);
@@ -685,6 +703,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
         agent: handle.agent,
         dispose: () => handle.dispose(),
         inflight: undefined,
+      pendingPrompts: new Map(),
         pendingPermissions: 0,
         lastState: undefined,
         titled: false,
@@ -847,64 +866,60 @@ export function apply(ctx: Context, config: AcpConfig): void {
           update: { sessionUpdate: "session_info_update", title },
         })
       }
+      const receipt = Promise.withResolvers<PromptResponse>()
+      record.pendingPrompts.set(message.id, { text, resolve: receipt.resolve, reject: receipt.reject })
       if (record.inflight !== undefined) {
-        // Another prompt while a turn is running: it enters the dsh inbox and
-        // is claimed by the driver at the next step boundary (approximating
-        // alwith-cli's mid-turn steering); completion is still announced by
-        // the in-flight turn's idle frame.
-        record.agent.followup(message)
-        reportUserMessage(record, message.id, text)
-        return { messageId: MessageId(message.id) }
-      }
-      await new Promise<void>((resolve, reject) => {
-        const inflight: NonNullable<SessionRecord["inflight"]> = {
-          resolve,
-          reject,
-          messageId: message.id,
-          turn: undefined,
-          endReason: undefined,
-          cancelled: false,
-        }
-        record.inflight = inflight
+        record.inflight.revision++
         try {
           record.agent.followup(message)
-          reportUserMessage(record, message.id, text)
-          notifyState(record, "running")
         } catch (error: unknown) {
-          record.inflight = undefined
-          const detail = error instanceof Error ? error.message : String(error)
-          throw internalError(`prompt was not queued: ${detail}`)
+          record.pendingPrompts.delete(message.id)
+          throw error
         }
-        // Settlement waits for whole-agent idle: a correlated turn/end arms
-        // endReason first; a turnless slot (admission discarded the prompt)
-        // stays cancelled. Since v2 the stop reason travels on the idle state
-        // frame; the response identifies the accepted user message.
-        void record.agent.whenIdle().then(async () => {
-          if (record.inflight !== inflight) return
-          // Idle is a host-visible durability boundary: the process may exit as
-          // soon as this frame arrives. Drain the official session write path first.
+        return receipt.promise
+      }
+      const inflight: NonNullable<SessionRecord["inflight"]> = {
+        revision: 0,
+        messageId: message.id,
+        turn: undefined,
+        endReason: undefined,
+        cancelled: false,
+      }
+      record.inflight = inflight
+      try {
+        record.agent.followup(message)
+        notifyState(record, "running")
+      } catch (error: unknown) {
+        record.inflight = undefined
+        record.pendingPrompts.delete(message.id)
+        throw internalError(`prompt was not queued: ${errorChain(error)}`)
+      }
+      // The response acknowledges insertion. Settlement independently waits for
+      // whole-agent idle and durable storage, including followups during a flush.
+      void (async () => {
+        while (record.inflight === inflight) {
+          const revision = inflight.revision
+          await record.agent.whenIdle()
           await ctx.sessions.flush(record.agent.session)
           if (record.inflight !== inflight) return
-          record.inflight = undefined
+          if (inflight.revision !== revision) continue
           const end = inflight.endReason
+          settlePrompt(record)
           if (end?.kind === "error") {
-            reportIdle(record, "_error")
-            inflight.reject(internalError(`turn failed: ${end.error.message}`))
-            return
+            reportIdle(record, "_error", `turn failed: ${end.error.message}`)
+          } else {
+            const reason: StopReason = inflight.cancelled || end === undefined ? "cancelled" : turnEndToStopReason(end)
+            reportIdle(record, reason)
           }
-          const reason: StopReason = inflight.cancelled || end === undefined ? "cancelled" : turnEndToStopReason(end)
-          reportIdle(record, reason)
-          inflight.resolve()
-        }).catch((error: unknown) => {
-          if (record.inflight !== inflight) return
-          record.inflight = undefined
-          reportIdle(record, "_error")
-          inflight.reject(internalError(`turn settlement failed: ${errorChain(error)}`))
-        })
+          if (firstPrompt) await refineTitle(record, text)
+          return
+        }
+      })().catch((error: unknown) => {
+        if (record.inflight !== inflight) return
+        settlePrompt(record)
+        reportIdle(record, "_error", `turn settlement failed: ${errorChain(error)}`)
       })
-      // First turn settled: upgrade the deterministic title in the background.
-      if (firstPrompt) void refineTitle(record, text)
-      return { messageId: MessageId(message.id) }
+      return receipt.promise
     })
     .onRequest("session/close", async (context): Promise<CloseSessionResponse> => {
       const params: CloseSessionRequest = context.params

@@ -5,6 +5,7 @@ import {
   client as createClientApp,
   ndJsonStream,
   type ClientConnection,
+  type PromptRequest,
   type RequestPermissionRequest,
   type UpdateSessionNotification,
   type Stream,
@@ -120,5 +121,16 @@ export async function makeHarness(script: ScriptEntry[], options: HarnessOptions
     updates.filter(update => update.sessionUpdate === "state_update").map(update => ({ state: update.state, stopReason: update.stopReason }))
   const initialize = () =>
     connection.agent.request("initialize", { protocolVersion: 2, info: { name: "test-client", version: "0.0.0" }, capabilities: {} })
-  return { ctx, adapter, agent: connection.agent, updates, states, permissionRequests, initialize, dispose: () => ctx.fiber.dispose() }
+  const promptAndWait = async (params: PromptRequest) => {
+    const start = updates.length
+    const receipt = await connection.agent.request("session/prompt", params)
+    await untilFrame(() => {
+      const inserted = updates.findIndex((update, index) => index >= start &&
+        (update.sessionUpdate === "user_message" || update.sessionUpdate === "user_message_chunk") &&
+        update.messageId === receipt.messageId)
+      return inserted >= start && updates.some((update, index) => index > inserted && update.sessionUpdate === "state_update" && update.state === "idle")
+    })
+    return receipt
+  }
+  return { ctx, adapter, promptAndWait, agent: connection.agent, updates, states, permissionRequests, initialize, dispose: () => ctx.fiber.dispose() }
 }

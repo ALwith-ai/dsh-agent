@@ -31,7 +31,7 @@ test("cancel waits for durable convergence and an empty concurrent prompt cannot
     expect(h.states().some(state => state.state === "idle")).toBe(false)
     await h.agent.notify("session/cancel", { sessionId })
     await checkpoint.promise
-    expect(settled).toBe(false)
+    expect(settled).toBe(true)
     expect(h.states().some(state => state.state === "idle")).toBe(false)
     await expect(h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "too soon" }] }))
       .rejects.toMatchObject({ code: -32602 })
@@ -69,8 +69,9 @@ test("completed idle waits for the session durability checkpoint", async () => {
     await checkpoint.promise
     await untilFrame(() => h.updates.some(update => update.sessionUpdate === "agent_message_chunk"))
     expect(h.states().some(state => state.state === "idle")).toBe(false)
+    const receipt = await prompt
+    expect(receipt.messageId).toBeString()
     release.resolve()
-    await prompt
     await untilFrame(() => h.states().at(-1)?.state === "idle")
     expect(h.states().at(-1)?.stopReason).toBe("end_turn")
   } finally {
@@ -80,7 +81,7 @@ test("completed idle waits for the session durability checkpoint", async () => {
   }
 })
 
-test("a failed completion checkpoint rejects the prompt and reports an error", async () => {
+test("a failed completion checkpoint preserves the insertion receipt and reports an error", async () => {
   const h = await makeHarness([textResponse("pong")])
   const remove = h.ctx.on("session/flush", session => {
     if (session.snapshotEvents().some(event => event.type === "turn/end")) {
@@ -90,9 +91,10 @@ test("a failed completion checkpoint rejects the prompt and reports an error", a
   try {
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
-    await expect(h.agent.request("session/prompt", {
+    const receipt = await h.agent.request("session/prompt", {
       sessionId, prompt: [{ type: "text", text: "ping" }],
-    })).rejects.toThrow("disk full")
+    })
+    expect(receipt.messageId).toBeString()
     await untilFrame(() => h.states().at(-1)?.state === "idle")
     expect(h.states().at(-1)?.stopReason).toBe("_error")
   } finally {
@@ -106,9 +108,10 @@ test("a model failure never reports a successful end_turn", async () => {
   try {
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
-    await expect(h.agent.request("session/prompt", {
+    const receipt = await h.agent.request("session/prompt", {
       sessionId, prompt: [{ type: "text", text: "ping" }],
-    })).rejects.toThrow("model unavailable")
+    })
+    expect(receipt.messageId).toBeString()
     await untilFrame(() => h.states().at(-1)?.state === "idle")
     expect(h.states().at(-1)?.stopReason).toBe("_error")
   } finally {

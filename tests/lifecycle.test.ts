@@ -27,7 +27,7 @@ test("close during a model switch cannot publish a replacement agent", async () 
   try {
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
-    await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "save" }] })
+    await h.promptAndWait( { sessionId, prompt: [{ type: "text", text: "save" }] })
     h.ctx.agents.get(sessionId as never)!.ctx.effect(() => async () => {
       acquired.resolve()
       await release.promise
@@ -65,7 +65,7 @@ test("a fresh session can switch models before its first prompt", async () => {
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
     await h.agent.request("session/set_config_option", { sessionId, configId: "model", type: "id", value: "mock-pro" })
-    await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "hello" }] })
+    await h.promptAndWait( { sessionId, prompt: [{ type: "text", text: "hello" }] })
     expect(h.adapter.requests.at(-1)?.model).toBe("mock-pro")
   } finally {
     await h.dispose()
@@ -85,7 +85,7 @@ test("a model switch refuses unconsumed injected input instead of discarding it"
     )
     await expect(h.agent.request("session/set_config_option", { sessionId, configId: "model", type: "id", value: "mock-pro" }))
       .rejects.toMatchObject({ code: -32602 })
-    await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "continue" }] })
+    await h.promptAndWait( { sessionId, prompt: [{ type: "text", text: "continue" }] })
     expect(JSON.stringify(h.adapter.requests.at(-1))).toContain("keep this history")
   } finally {
     await h.dispose()
@@ -99,7 +99,7 @@ test("a failed model replacement leaves the persisted session recoverable", asyn
   try {
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
-    await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "remember me" }] })
+    await h.promptAndWait( { sessionId, prompt: [{ type: "text", text: "remember me" }] })
     h.ctx.agents.get(sessionId as never)!.ctx.effect(() => () => { renameSync(root, moved) })
     await expect(h.agent.request("session/set_config_option", {
       sessionId, configId: "model", type: "id", value: "mock-pro",
@@ -107,7 +107,7 @@ test("a failed model replacement leaves the persisted session recoverable", asyn
     expect(h.ctx.agents.list()).toHaveLength(0)
     renameSync(moved, root)
     await h.agent.request("session/resume", { sessionId, cwd: "/tmp" })
-    await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "continue" }] })
+    await h.promptAndWait( { sessionId, prompt: [{ type: "text", text: "continue" }] })
     expect(JSON.stringify(h.adapter.requests.at(-1))).toContain("remember me")
   } finally {
     if (existsSync(moved)) renameSync(moved, root)
