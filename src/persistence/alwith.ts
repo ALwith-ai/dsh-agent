@@ -1,6 +1,6 @@
 /**
  * `ctx.sessionPersistence` provider that stores DSH sessions as ALwith session records
- * (`<projectsDir>/<项目键>/<sessionId>.jsonl`, plain JSONL, Claude Code compatible).
+ * (`<projectsDir>/<project key>/<sessionId>.jsonl`, plain JSONL, Claude Code compatible).
  *
  * This is the storage seam, not a bridge side channel: the loop creates a handle per session,
  * live events route into the write handle through `session/event`, and `session/flush` is the

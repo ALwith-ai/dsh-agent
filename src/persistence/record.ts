@@ -1,5 +1,5 @@
 /**
- * ALwith session record codec: the DSH event log ⇄ `~/.alwith/projects/<项目键>/<id>.jsonl`.
+ * ALwith session record codec: the DSH event log ⇄ `~/.alwith/projects/<project key>/<id>.jsonl`.
  *
  * The record is the ALwith format that is compatible with Claude Code messages (contract:
  * alwith-desktop `docs/session-record.md`). Three layers share one file:
