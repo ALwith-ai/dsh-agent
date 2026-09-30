@@ -1,4 +1,4 @@
-// Vendored from deepseek-harness tag dsh-v0.2.0-rc.1; local patch: bun:test and package imports.
+// Vendored from deepseek-harness tag dsh-v0.2.0-rc.2; local patch: bun:test and package imports.
 // @ts-nocheck
 /**
  * Reusable handle contract test for any {@link SessionPersistence} backend. A

@@ -30,7 +30,7 @@ DEEPSEEK_API_KEY=… bun src/main.ts   # stdio 上的 ACP v2 服务器
 bun test                              # mock 适配器协议测试,不打真模型
 ```
 
-`session/resume` 语义:`replayFrom` 省略 = 只恢复上下文;`{ type: "start" }` = 整段对话重放为 `session/update` 帧。每个进程只挂一个持久化 provider,由 `ALWITH_DSH_PERSISTENCE` 选择:`dsh`(默认)把 dsh 自己的 JSONL 日志存在 `$ALWITH_DSH_SESSIONS_ROOT`(默认 `~/.dsh-agent/sessions`);`alwith` 把每个会话存成 ALwith 会话记录(`$ALWITH_DSH_PROJECTS_DIR/<项目键>/<sessionId>.jsonl`,明文 JSONL,兼容 Claude Code 消息,dsh 事件原样保留)。选 `alwith` 时 `session/resume` 也能接续 ALwith CLI 写的记录:消息、工具调用与结果重建成 dsh 事件,思考块不进模型上下文。两个 provider 都实现 dsh 0.2.0-rc.1 的句柄合同(每会话单写者、实时事件路由与批量落盘屏障、首次追加前修复撕裂尾部、词表 fail-closed),并通过上游持久化契约测试。
+`session/resume` 语义:`replayFrom` 省略 = 只恢复上下文;`{ type: "start" }` = 整段对话重放为 `session/update` 帧。每个进程只挂一个持久化 provider,由 `ALWITH_DSH_PERSISTENCE` 选择:`dsh`(默认)把 dsh 自己的 JSONL 日志存在 `$ALWITH_DSH_SESSIONS_ROOT`(默认 `~/.dsh-agent/sessions`);`alwith` 把每个会话存成 ALwith 会话记录(`$ALWITH_DSH_PROJECTS_DIR/<项目键>/<sessionId>.jsonl`,明文 JSONL,兼容 Claude Code 消息,dsh 事件原样保留)。选 `alwith` 时 `session/resume` 也能接续 ALwith CLI 写的记录:消息、工具调用与结果重建成 dsh 事件,思考块不进模型上下文。两个 provider 都实现 dsh 0.2.0-rc.2 的句柄合同(每会话单写者、实时事件路由与批量落盘屏障、首次追加前修复撕裂尾部、词表 fail-closed),并通过上游持久化契约测试。
 
 `session/prompt` 在 Harness 将用户消息插入模型可见历史后立即返回 `messageId`，与实时 `user_message` 通知及保留的历史记录一致。回执不等待生成或轮末持久化检查点。排队消息若在插入前被取消，请求直接拒绝，不伪造回执。客户端用回执关联用户消息，并等待随后对应的 `idle` 事件判断完成。线上协议使用 ACP SDK 1.5.1 验证。
 
@@ -61,8 +61,8 @@ bun src/main.ts plugins set tool-web disabled    # 先校验再落盘
 
 [MIT](LICENSE);改编自上游 `@deepseek-ai/dsh-acp` 的部分见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-## Harness 0.2.0-rc.1
+## Harness 0.2.0-rc.2
 
-整套 Harness 发布集精确锁定到 0.2.0-rc.1。DeepSeek API key 路由使用 `dsh-llm-deepseek-api-key`；工具结果使用当前扁平的 tool 角色消息契约。Cordis 提供 `cordis_inspect_list` 和 `cordis_inspect_query`，不模拟已移除的编写工具。
+整套 Harness 发布集精确锁定到 0.2.0-rc.2。DeepSeek API key 路由使用 `dsh-llm-deepseek-api-key`；工具结果使用当前扁平的 tool 角色消息契约。Cordis 提供 `cordis_inspect_list` 和 `cordis_inspect_query`，不模拟已移除的编写工具。
 
 PTC 宿主和子进程均运行 Bun。`src/ptc-bun-loader.ts` 使用 amaro 类型擦除和兼容 Bun 的继承管道流适配官方进程运行时，不需要 Node 可执行文件或旧 worker fork。文件隔离和运行时限仍生效；上游 V8 老生代堆限制在 Bun 下不生效。

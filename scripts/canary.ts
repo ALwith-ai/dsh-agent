@@ -6,8 +6,11 @@ import { readFileSync, writeFileSync } from "node:fs"
 import { $ } from "bun"
 
 const tag = process.argv[2] ?? "next"
-const manifest = JSON.parse(readFileSync("package.json", "utf8")) as { dependencies: Record<string, string> }
-const names = Object.keys(manifest.dependencies).filter(name => name.startsWith("@deepseek-ai/"))
+const manifest = JSON.parse(readFileSync("package.json", "utf8")) as Record<string, Record<string, string> | undefined>
+const sections = ["dependencies", "devDependencies"].flatMap(key => (manifest[key] === undefined ? [] : [manifest[key]]))
+const pins = new Map<string, Record<string, string>>()
+for (const section of sections) for (const name of Object.keys(section)) if (name.startsWith("@deepseek-ai/")) pins.set(name, section)
+const names = [...pins.keys()]
 const moved: string[] = []
 const missing: string[] = []
 await Promise.all(
@@ -19,9 +22,10 @@ await Promise.all(
       return
     }
     // A dist-tag can lag behind what we already pin (cordis `next` sat below the pinned stable); never move backwards.
-    if (Bun.semver.order(version, manifest.dependencies[name]) <= 0) return
-    moved.push(`${name} ${manifest.dependencies[name]} -> ${version}`)
-    manifest.dependencies[name] = version
+    const section = pins.get(name) as Record<string, string>
+    if (Bun.semver.order(version, section[name] as string) <= 0) return
+    moved.push(`${name} ${section[name]} -> ${version}`)
+    section[name] = version
   }),
 )
 writeFileSync("package.json", `${JSON.stringify(manifest, null, 2)}\n`)

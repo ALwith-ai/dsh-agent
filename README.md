@@ -30,7 +30,7 @@ DEEPSEEK_API_KEY=… bun src/main.ts   # ACP v2 server over stdio
 bun test                              # protocol tests with a mock adapter; no real model calls
 ```
 
-`session/resume` semantics: an omitted `replayFrom` means context-only restore; `{ type: "start" }` replays the whole conversation as `session/update` frames. Exactly one persistence provider is mounted per process, chosen by `ALWITH_DSH_PERSISTENCE`: `dsh` (default) keeps dsh's own JSONL logs under `$ALWITH_DSH_SESSIONS_ROOT` (default `~/.dsh-agent/sessions`); `alwith` stores each session as an ALwith session record (`$ALWITH_DSH_PROJECTS_DIR/<project key>/<sessionId>.jsonl`, plain JSONL compatible with Claude Code messages, with every dsh event kept verbatim). With `alwith`, `session/resume` also continues records the ALwith CLI wrote: their messages, tool calls and results are rebuilt into dsh events; thinking blocks never enter the model context. Both providers implement the dsh 0.2.0-rc.1 handle seam (single-writer ownership per session, live-event routing with a batched durability barrier, torn-tail repair before the first append, fail-closed vocabulary) and pass the upstream persistence contract suite.
+`session/resume` semantics: an omitted `replayFrom` means context-only restore; `{ type: "start" }` replays the whole conversation as `session/update` frames. Exactly one persistence provider is mounted per process, chosen by `ALWITH_DSH_PERSISTENCE`: `dsh` (default) keeps dsh's own JSONL logs under `$ALWITH_DSH_SESSIONS_ROOT` (default `~/.dsh-agent/sessions`); `alwith` stores each session as an ALwith session record (`$ALWITH_DSH_PROJECTS_DIR/<project key>/<sessionId>.jsonl`, plain JSONL compatible with Claude Code messages, with every dsh event kept verbatim). With `alwith`, `session/resume` also continues records the ALwith CLI wrote: their messages, tool calls and results are rebuilt into dsh events; thinking blocks never enter the model context. Both providers implement the dsh 0.2.0-rc.2 handle seam (single-writer ownership per session, live-event routing with a batched durability barrier, torn-tail repair before the first append, fail-closed vocabulary) and pass the upstream persistence contract suite.
 
 `session/prompt` returns the user message's `messageId` as soon as the Harness inserts it into model-visible history, identical to its live `user_message` update and retained history. This receipt does not wait for generation or its durability checkpoint. A queued message cancelled before insertion rejects the request instead of fabricating a receipt. Clients correlate the receipt with the user update and wait for the subsequent `idle` event to detect completion. The wire contract is validated with ACP SDK 1.5.1.
 
@@ -61,8 +61,8 @@ Core rows (session, llm, sandbox, approvals, …) cannot be disabled, and disabl
 
 [MIT](LICENSE); portions adapted from upstream `@deepseek-ai/dsh-acp` are noted in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-## Harness 0.2.0-rc.1
+## Harness 0.2.0-rc.2
 
-The entire Harness release set is pinned to 0.2.0-rc.1. DeepSeek API-key routing uses `dsh-llm-deepseek-api-key`; tool results use the current flat tool-role message contract. Cordis exposes `cordis_inspect_list` and `cordis_inspect_query`; removed authoring tools are not emulated.
+The entire Harness release set is pinned to 0.2.0-rc.2. DeepSeek API-key routing uses `dsh-llm-deepseek-api-key`; tool results use the current flat tool-role message contract. Cordis exposes `cordis_inspect_list` and `cordis_inspect_query`; removed authoring tools are not emulated.
 
 The PTC host and child both run Bun. `src/ptc-bun-loader.ts` adapts the official process runtime with amaro type stripping and Bun-compatible inherited-pipe streams. No Node executable or old worker fork is required. File confinement and elapsed deadlines remain enforced; the upstream V8 old-generation heap setting is not enforced by Bun.
