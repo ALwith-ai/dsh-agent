@@ -1,0 +1,26 @@
+name: Canary
+# Runs the bridge against the next dsh release before we adopt it: every @deepseek-ai/*
+# dependency moves to its `next` dist-tag (never backwards), then typecheck and tests.
+# A red run is early warning, not a release blocker; the pinned versions stay untouched.
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      dist-tag:
+        description: npm dist-tag to test against
+        default: next
+permissions:
+  contents: read
+jobs:
+  canary:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.4.2
+      - run: bun scripts/canary.ts "${{ inputs.dist-tag || 'next' }}"
+      - run: bun install
+      - run: bun run typecheck
+      - run: bun run test
