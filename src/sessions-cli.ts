@@ -8,7 +8,7 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { Context } from "@deepseek-ai/cordis"
 import SessionStore from "@deepseek-ai/dsh-session"
-import JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl"
+import * as JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl"
 import type {} from "@deepseek-ai/dsh-session-persistence"
 
 function defaultSessionsRoot(): string {

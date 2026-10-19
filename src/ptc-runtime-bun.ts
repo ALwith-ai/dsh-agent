@@ -9,8 +9,11 @@ export default class BunPtcRuntime extends PtcRuntime {
   constructor(ctx: Context, config: Config) {
     super(ctx, {
       ...config,
-      nodeExecutable: process.execPath,
-      bootstrapPath: fileURLToPath(new URL("./ptc-process-bun.ts", import.meta.url)),
+      launch: {
+        kind: "node-script",
+        executable: process.execPath,
+        bootstrapPath: fileURLToPath(new URL("./ptc-process-bun.ts", import.meta.url)),
+      },
     })
   }
 }

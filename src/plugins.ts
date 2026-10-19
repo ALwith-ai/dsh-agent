@@ -23,10 +23,11 @@ import LlmRuntime from "@deepseek-ai/dsh-llm";
 import SessionStore from "@deepseek-ai/dsh-session";
 import SessionProjectionRegistry from "@deepseek-ai/dsh-session-projection";
 import SystemPrompt from "@deepseek-ai/dsh-system-prompt";
+import WorkingDirectoryService from "@deepseek-ai/dsh-working-directory";
 import ToolRuntime from "@deepseek-ai/dsh-tools";
 import AgentRegistry from "@deepseek-ai/dsh-agent";
 import AgentLoop from "@deepseek-ai/dsh-agent-loop";
-import JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl";
+import * as JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl";
 import AlwithSessionPersistence from "./persistence/alwith.ts";
 import LocalSubprocessRuntime from "@deepseek-ai/dsh-subprocess-local";
 import LocalSandboxProvider from "@deepseek-ai/dsh-sandbox-local";
@@ -394,6 +395,13 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "@deepseek-ai/dsh-fs-sandbox",
       "Sandbox-policied filesystem service",
       async (ctx, config) => ctx.plugin(SandboxedFileSystem, config as never),
+    ),
+    core(
+      "working-directory",
+      "@deepseek-ai/dsh-working-directory",
+      "Session working directory for tools and subagents",
+      async (ctx, config) => ctx.plugin(WorkingDirectoryService, config as never),
+      { defaultDirectory: options.workspaceRoot },
     ),
     core(
       "jobs-local",

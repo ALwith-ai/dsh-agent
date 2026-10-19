@@ -55,7 +55,6 @@ import {
   type ToolCallContent,
   type ToolCallId,
   type UpdateSessionNotification,
-  type StopReason,
   type Stream,
 } from "@agentclientprotocol/sdk/experimental/v2"
 import type { Agent } from "@deepseek-ai/dsh-agent"
@@ -203,7 +202,9 @@ export function apply(ctx: Context, config: AcpConfig): void {
     record.lastState = state
     notify({
       sessionId: record.agent.session.id,
-      update: { sessionUpdate: "state_update", state },
+      update: state === "running"
+        ? { sessionUpdate: "state_update", state: "running" }
+        : { sessionUpdate: "state_update", state: "requires_action" },
     })
   }
 
@@ -219,11 +220,18 @@ export function apply(ctx: Context, config: AcpConfig): void {
     })
   }
 
-  const reportIdle = (record: SessionRecord, stopReason: StopReason, error?: string): void => {
+  const idleReasons = {
+    end_turn: { stopReason: "end_turn" },
+    max_tokens: { stopReason: "max_tokens" },
+    cancelled: { stopReason: "cancelled" },
+    _error: { stopReason: "_error" },
+  } as const
+
+  const reportIdle = (record: SessionRecord, stopReason: keyof typeof idleReasons, error?: string): void => {
     record.lastState = "idle"
     notify({
       sessionId: record.agent.session.id,
-      update: { sessionUpdate: "state_update", state: "idle", stopReason, ...(error === undefined ? {} : { _meta: { alwith: { error } } }) },
+      update: { sessionUpdate: "state_update", state: "idle", ...idleReasons[stopReason], ...(error === undefined ? {} : { _meta: { alwith: { error } } }) },
     })
   }
 
@@ -908,7 +916,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
           if (end?.kind === "error") {
             reportIdle(record, "_error", `turn failed: ${end.error.message}`)
           } else {
-            const reason: StopReason = inflight.cancelled || end === undefined ? "cancelled" : turnEndToStopReason(end)
+            const reason: ReturnType<typeof turnEndToStopReason> = inflight.cancelled || end === undefined ? "cancelled" : turnEndToStopReason(end)
             reportIdle(record, reason)
           }
           if (firstPrompt) await refineTitle(record, text)

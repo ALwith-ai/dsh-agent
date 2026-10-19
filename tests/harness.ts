@@ -12,7 +12,7 @@ import {
 } from "@agentclientprotocol/sdk/experimental/v2"
 import { LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from "@deepseek-ai/dsh-llm"
 import AgentLoop from "@deepseek-ai/dsh-agent-loop"
-import JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl"
+import * as JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl"
 import AlwithSessionPersistence from "../src/persistence/alwith.ts"
 import { mountAgentLoopTestDependencies } from "@deepseek-ai/dsh-agent-loop-testkit"
 import * as Bridge from "../src/bridge.ts"

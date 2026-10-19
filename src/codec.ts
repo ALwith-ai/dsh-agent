@@ -6,11 +6,11 @@
  * upstream package.
  */
 
-import type { ContentBlock as AcpContentBlock, StopReason } from "@agentclientprotocol/sdk/experimental/v2"
+import type { ContentBlock as AcpContentBlock } from "@agentclientprotocol/sdk/experimental/v2"
 import type { TurnEndReason } from "@deepseek-ai/dsh-session"
 
 /** Map a harness turn ending to ACP's terminal reason vocabulary. */
-export function turnEndToStopReason(reason: TurnEndReason): StopReason {
+export function turnEndToStopReason(reason: TurnEndReason): "end_turn" | "max_tokens" | "cancelled" {
   switch (reason.kind) {
     case "completed":
       return "end_turn"

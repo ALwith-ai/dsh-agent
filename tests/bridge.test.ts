@@ -16,7 +16,7 @@ describe("dsh-agent bridge", () => {
         { type: "image", mimeType: "image/png", data: "AA==" },
         { type: "audio", mimeType: "audio/wav", data: "AA==" },
         { type: "resource", resource: { uri: "file:///tmp/example", text: "embedded" } },
-      ]) {
+      ] as const) {
         await expect(h.agent.request("session/prompt", { sessionId, prompt: [content] }))
           .rejects.toMatchObject({ code: -32602 })
       }
