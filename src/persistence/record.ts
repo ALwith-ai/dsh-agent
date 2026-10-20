@@ -418,7 +418,7 @@ function parseLines(buffer: Buffer): ParsedLines {
         parsed = JSON.parse(raw) as RecordLine
       } catch (error) {
         if (!complete) break
-        throw new Error(`corrupt ALwith record: line ending at byte ${end} is not JSON: ${String(error)}`)
+        throw new Error(`corrupt ALwith record: line ending at byte ${end} is not JSON`, { cause: error })
       }
       lines.push(parsed)
     }
@@ -433,11 +433,13 @@ function toolResultText(content: unknown): string {
   if (typeof content === "string") return content
   if (Array.isArray(content)) {
     return content
-      .map((block) =>
-        typeof block === "object" && block !== null && (block as { type?: unknown }).type === "text"
-          ? String((block as { text?: unknown }).text ?? "")
-          : JSON.stringify(block)
-      )
+      .map((block) => {
+        const text =
+          typeof block === "object" && block !== null && (block as { type?: unknown }).type === "text"
+            ? (block as { text?: unknown }).text
+            : undefined
+        return typeof text === "string" ? text : JSON.stringify(block)
+      })
       .join("\n")
   }
   if (content === undefined || content === null) return ""

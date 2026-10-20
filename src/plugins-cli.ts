@@ -43,7 +43,7 @@ function parseConfigPatch(id: string, raw: string): Record<string, unknown | nul
   try {
     parsed = JSON.parse(raw)
   } catch (error) {
-    throw new Error(`plugin "${id}" config patch is not valid JSON: ${String(error)}`)
+    throw new Error(`plugin "${id}" config patch is not valid JSON`, { cause: error })
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error(`plugin "${id}" config patch must be a JSON object`)

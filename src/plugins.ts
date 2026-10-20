@@ -760,7 +760,7 @@ export function loadPluginOverrides(file: string): PluginOverrides {
   try {
     parsed = JSON.parse(readFileSync(file, "utf8"))
   } catch (error) {
-    throw new Error(`plugin overrides file ${file} is not valid JSON: ${String(error)}`)
+    throw new Error(`plugin overrides file ${file} is not valid JSON`, { cause: error })
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error(`plugin overrides file ${file} must contain a JSON object`)

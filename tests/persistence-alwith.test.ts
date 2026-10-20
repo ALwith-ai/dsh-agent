@@ -490,7 +490,7 @@ describe("session/resume cwd spelling", () => {
           })
         ).rejects.toMatchObject({ message: expect.stringContaining("cwd mismatch") })
       } finally {
-        h.dispose()
+        await h.dispose()
       }
     } finally {
       await rm(dir, { recursive: true, force: true })

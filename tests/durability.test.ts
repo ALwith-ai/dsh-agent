@@ -8,14 +8,19 @@ test("cancel waits for durable convergence and an empty concurrent prompt cannot
   const started = Promise.withResolvers<void>()
   const checkpoint = Promise.withResolvers<void>()
   const release = Promise.withResolvers<void>()
-  h.adapter.stream = async function* (options) {
-    started.resolve()
-    await new Promise<void>((resolve) => {
-      if (options.signal?.aborted) resolve()
-      else options.signal?.addEventListener("abort", () => resolve(), { once: true })
+  // A stream that fails before its first item: an explicit iterator, since a generator would never yield.
+  h.adapter.stream = (options) => ({
+    [Symbol.asyncIterator]: () => ({
+      next: async () => {
+        started.resolve()
+        await new Promise<void>((resolve) => {
+          if (options.signal?.aborted) resolve()
+          else options.signal?.addEventListener("abort", () => resolve(), { once: true })
+        })
+        throw new Error("aborted")
+      }
     })
-    throw new Error("aborted")
-  }
+  })
   const remove = h.ctx.on("session/flush", async (session) => {
     if (!session.snapshotEvents().some((event) => event.type === "turn/end")) return
     checkpoint.resolve()

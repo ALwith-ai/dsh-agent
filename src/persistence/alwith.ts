@@ -694,7 +694,9 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
           await close()
           await this.rollback(path, before, content)
         } catch (rollbackError) {
-          throw new AggregateError([error, rollbackError], `failed to roll back append to "${path}"`)
+          throw new AggregateError([error, rollbackError], `failed to roll back append to "${path}"`, {
+            cause: rollbackError
+          })
         }
         throw error
       }
