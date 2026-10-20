@@ -1,0 +1,41 @@
+# Formatting and linting are built into Bun (1.4.4+); only non-default settings are written. prettier / oxlint / biome are gone.
+[fmt]
+printWidth = 120
+semi = false
+trailingComma = "none"
+sortImports = true
+ignorePatterns = [
+  "bun.lock",
+  "**/*.md",
+  "package.json",
+  "**/*.toml",
+]
+
+[lint]
+typeAware = true
+ignorePatterns = [
+  "**/dist/**",
+  "**/node_modules/**",
+  "**/target/**",
+  # Vendored upstream sources (deepseek-harness); mirrored, never hand-edited
+  "src/vendor/**",
+  "tests/upstream/**",
+]
+
+[lint.rules]
+# Import cycles were a hard gate before; the rule is off by default
+"import/no-cycle" = ["error", { allowUnsafeDynamicCyclicDependency = true }]
+# Rules on by default that conflict with this repo's conventions are turned off whole; inline suppressions are never allowed
+# any only appears at the JSON boundary (session records, provider payloads); accesses flowing out of it are not reported one by one
+"@typescript-eslint/no-explicit-any" = "off"
+"@typescript-eslint/no-unsafe-assignment" = "off"
+"@typescript-eslint/no-unsafe-member-access" = "off"
+"@typescript-eslint/no-unsafe-call" = "off"
+"@typescript-eslint/no-unsafe-return" = "off"
+"@typescript-eslint/no-unsafe-argument" = "off"
+# async is the interface contract; async functions without await (fakes, adapters) are legitimate
+"@typescript-eslint/require-await" = "off"
+# Its inference disagrees with tsc; off until it matches tsc
+"@typescript-eslint/no-unnecessary-type-assertion" = "off"
+# Protocol types spell out known literals next to string, kept for documentation
+"@typescript-eslint/no-redundant-type-constituents" = "off"
