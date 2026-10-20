@@ -1,9 +1,9 @@
-import { join } from "node:path"
-import { tmpdir } from "node:os"
-import { mkdtempSync } from "node:fs"
-/** Protocol behavior tests over in-memory transport with a mock adapter; no real model calls. */
-
 import { describe, expect, test } from "bun:test"
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+/** Protocol behavior tests over in-memory transport with a mock adapter; no real model calls. */
+import { join } from "node:path"
+
 import { makeHarness, textResponse, untilFrame } from "./harness.ts"
 
 describe("dsh-agent bridge", () => {
@@ -15,10 +15,11 @@ describe("dsh-agent bridge", () => {
       for (const content of [
         { type: "image", mimeType: "image/png", data: "AA==" },
         { type: "audio", mimeType: "audio/wav", data: "AA==" },
-        { type: "resource", resource: { uri: "file:///tmp/example", text: "embedded" } },
+        { type: "resource", resource: { uri: "file:///tmp/example", text: "embedded" } }
       ] as const) {
-        await expect(h.agent.request("session/prompt", { sessionId, prompt: [content] }))
-          .rejects.toMatchObject({ code: -32602 })
+        await expect(h.agent.request("session/prompt", { sessionId, prompt: [content] })).rejects.toMatchObject({
+          code: -32602
+        })
       }
       await h.agent.request("session/prompt", { sessionId, prompt: [] })
       expect(h.adapter.requests).toHaveLength(0)
@@ -48,7 +49,7 @@ describe("dsh-agent bridge", () => {
 
   test("session/list is baseline: lists persisted sessions newest first, narrowed by cwd", async () => {
     const h = await makeHarness([textResponse("hi"), textResponse("hi")], {
-      sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-list-")),
+      sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-list-"))
     })
     await h.initialize()
     const first = await h.agent.request("session/new", { cwd: "/tmp" })
@@ -57,16 +58,15 @@ describe("dsh-agent bridge", () => {
     await h.agent.request("session/prompt", { sessionId: second.sessionId, prompt: [{ type: "text", text: "b" }] })
     // A completed prompt has already drained its session to persistence.
     const all = await h.agent.request("session/list", {})
-    expect(all.sessions.map(session => session.sessionId)).toEqual([second.sessionId, first.sessionId])
+    expect(all.sessions.map((session) => session.sessionId)).toEqual([second.sessionId, first.sessionId])
     expect(all.sessions[0]).toMatchObject({ cwd: "/tmp/other" })
     expect(all.sessions[0]?.updatedAt).toMatch(/^\d{4}-/)
     const narrowed = await h.agent.request("session/list", { cwd: "/tmp" })
-    expect(narrowed.sessions.map(session => session.sessionId)).toEqual([first.sessionId])
+    expect(narrowed.sessions.map((session) => session.sessionId)).toEqual([first.sessionId])
     // The JSONL backend holds a lock file per live session; an undisposed harness leaks them
     // and Bun reports the handles when a later test's GC collects them.
     await h.dispose()
   })
-
 
   test("prompt streams token by token; concatenation equals the full text exactly once", async () => {
     const h = await makeHarness([textResponse("hello")])
@@ -74,23 +74,24 @@ describe("dsh-agent bridge", () => {
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
     const response = await h.agent.request("session/prompt", {
       sessionId,
-      prompt: [{ type: "text", text: "hi" }],
+      prompt: [{ type: "text", text: "hi" }]
     })
     expect(response.messageId).toBeString()
     // Notifications are asynchronous; the idle frame is last on the wire, so once
     // it lands every chunk before it has landed too.
     await untilFrame(() => h.states().at(-1)?.state === "idle")
-    expect(h.updates.filter(update => update.sessionUpdate === "user_message")).toEqual([
-      expect.objectContaining({ messageId: response.messageId, content: [{ type: "text", text: "hi" }] }),
+    expect(h.updates.filter((update) => update.sessionUpdate === "user_message")).toEqual([
+      expect.objectContaining({ messageId: response.messageId, content: [{ type: "text", text: "hi" }] })
     ])
-    const chunks = h.updates.filter(update => update.sessionUpdate === "agent_message_chunk")
+    const chunks = h.updates.filter((update) => update.sessionUpdate === "agent_message_chunk")
     // textResponse yields per-character deltas: this must be a multi-frame stream, not one full-text frame
     expect(chunks.length).toBeGreaterThan(1)
-    const text = chunks.map(update => (update as { content: { text: string } }).content.text).join("")
+    const text = chunks.map((update) => (update as { content: { text: string } }).content.text).join("")
     expect(text).toBe("hello")
     // Every assistant frame carries _meta.alwith turn metadata (the ALwith
     // Desktop client refuses a turn without an assistant providerId).
-    const meta = (chunks.at(0) as { _meta?: { alwith?: { providerId?: string; model?: string; timestamp?: string } } })._meta
+    const meta = (chunks.at(0) as { _meta?: { alwith?: { providerId?: string; model?: string; timestamp?: string } } })
+      ._meta
     expect(meta?.alwith?.providerId).toBe("mock")
     expect(meta?.alwith?.model).toBe("mock")
     expect(typeof meta?.alwith?.timestamp).toBe("string")
@@ -103,7 +104,7 @@ describe("dsh-agent bridge", () => {
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
     await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "hi" }] })
     await untilFrame(() => h.states().at(-1)?.state === "idle")
-    expect(h.states().map(entry => entry.state)).toContain("running")
+    expect(h.states().map((entry) => entry.state)).toContain("running")
     const last = h.states().at(-1)
     expect(last?.state).toBe("idle")
     expect(last?.stopReason).toBe("end_turn")
@@ -115,10 +116,12 @@ describe("dsh-agent bridge", () => {
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
     await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "  name   this session  " }] })
-    await untilFrame(() => h.states().filter(entry => entry.state === "idle").length >= 1)
+    await untilFrame(() => h.states().filter((entry) => entry.state === "idle").length >= 1)
     await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "second" }] })
-    await untilFrame(() => h.states().filter(entry => entry.state === "idle").length >= 2)
-    const titles = h.updates.filter(update => update.sessionUpdate === "session_info_update") as Array<{ title?: string }>
+    await untilFrame(() => h.states().filter((entry) => entry.state === "idle").length >= 2)
+    const titles = h.updates.filter((update) => update.sessionUpdate === "session_info_update") as Array<{
+      title?: string
+    }>
     expect(titles.length).toBe(1)
     expect(titles[0]?.title).toBe("name this session")
     await h.dispose()
@@ -144,12 +147,15 @@ describe("ACP v2 baseline: user message report, session/close, compaction frames
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
     await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "hi there" }] })
     await untilFrame(() => h.states().at(-1)?.state === "idle")
-    const reported = h.updates.filter(update => update.sessionUpdate === "user_message") as Array<{ messageId: string; content: Array<{ type: string; text?: string }> }>
+    const reported = h.updates.filter((update) => update.sessionUpdate === "user_message") as Array<{
+      messageId: string
+      content: Array<{ type: string; text?: string }>
+    }>
     expect(reported.length).toBe(1)
     expect(reported[0]?.content).toEqual([{ type: "text", text: "hi there" }])
     expect(typeof reported[0]?.messageId).toBe("string")
     // the same id a replay reports the message under
-    const running = h.states().findIndex(entry => entry.state === "running")
+    const running = h.states().findIndex((entry) => entry.state === "running")
     expect(running).toBeGreaterThanOrEqual(0)
     await h.dispose()
   })
@@ -163,7 +169,7 @@ describe("ACP v2 baseline: user message report, session/close, compaction frames
     expect(Object.keys(closed)).toEqual([])
     expect(h.ctx.agents.get(sessionId as never)).toBeUndefined()
     await expect(
-      h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "still there?" }] }),
+      h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "still there?" }] })
     ).rejects.toThrow()
     await h.dispose()
   })
@@ -174,15 +180,26 @@ describe("ACP v2 baseline: user message report, session/close, compaction frames
     expect(start).toEqual([{ sessionUpdate: "compaction_update", compactionId: "c1", status: "in_progress" }])
     const summary = compactionUpdates({
       type: "compaction/summary",
-      data: { compactionId: "c1", summary: [{ type: "text", text: "so far" }, { type: "text", text: "" }], shadowedRange: { start: 0, end: 4 } },
+      data: {
+        compactionId: "c1",
+        summary: [
+          { type: "text", text: "so far" },
+          { type: "text", text: "" }
+        ],
+        shadowedRange: { start: 0, end: 4 }
+      }
     } as never)
-    expect(summary).toEqual([{ sessionUpdate: "compaction_summary_chunk", compactionId: "c1", content: { type: "text", text: "so far" } }])
+    expect(summary).toEqual([
+      { sessionUpdate: "compaction_summary_chunk", compactionId: "c1", content: { type: "text", text: "so far" } }
+    ])
     expect(compactionUpdates({ type: "compaction/end", data: { compactionId: "c1", turn: 3 } } as never)).toEqual([
-      { sessionUpdate: "compaction_update", compactionId: "c1", status: "completed" },
+      { sessionUpdate: "compaction_update", compactionId: "c1", status: "completed" }
     ])
-    expect(compactionUpdates({ type: "compaction/end", data: { compactionId: "c1", turn: 3, error: "boom" } } as never)).toEqual([
-      { sessionUpdate: "compaction_update", compactionId: "c1", status: "failed", error: "boom" },
-    ])
-    expect(compactionUpdates({ type: "compaction/prune", data: { shadowedRange: { start: 0, end: 4 } } } as never)).toEqual([])
+    expect(
+      compactionUpdates({ type: "compaction/end", data: { compactionId: "c1", turn: 3, error: "boom" } } as never)
+    ).toEqual([{ sessionUpdate: "compaction_update", compactionId: "c1", status: "failed", error: "boom" }])
+    expect(
+      compactionUpdates({ type: "compaction/prune", data: { shadowedRange: { start: 0, end: 4 } } } as never)
+    ).toEqual([])
   })
 })

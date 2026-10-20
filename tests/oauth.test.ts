@@ -4,7 +4,9 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+
 import { credentialKey } from "@deepseek-ai/dsh-credentials"
+
 import { composeRuntime } from "../src/compose.ts"
 import { composeCredentialPlane, hostLoginInteraction, runOauthCli } from "../src/oauth.ts"
 
@@ -36,7 +38,7 @@ describe("credential plane", () => {
       try {
         await ctx.credentials.modifyRecord(credentialKey("llm-pi-ai", "anthropic"), async () => ({
           kind: "grant",
-          payload: { type: "oauth", refresh: "r1", access: "a1", expires: 123 },
+          payload: { type: "oauth", refresh: "r1", access: "a1", expires: 123 }
         }))
       } finally {
         await ctx.fiber.dispose()
@@ -85,16 +87,18 @@ describe("host login interaction", () => {
     controller.abort()
     let timeout: ReturnType<typeof setTimeout> | undefined
     try {
-      await expect(Promise.race([
-        hostLoginInteraction().prompt({
-          kind: "text",
-          message: "Paste the redirect URL",
-          signal: controller.signal,
-        }),
-        new Promise<never>((_, reject) => {
-          timeout = setTimeout(() => reject(new Error("prompt remained pending")), 100)
-        }),
-      ])).rejects.toThrow("settled out of band")
+      await expect(
+        Promise.race([
+          hostLoginInteraction().prompt({
+            kind: "text",
+            message: "Paste the redirect URL",
+            signal: controller.signal
+          }),
+          new Promise<never>((_, reject) => {
+            timeout = setTimeout(() => reject(new Error("prompt remained pending")), 100)
+          })
+        ])
+      ).rejects.toThrow("settled out of band")
     } finally {
       clearTimeout(timeout)
     }
@@ -105,7 +109,7 @@ describe("host login interaction", () => {
     const pending = hostLoginInteraction().prompt({
       kind: "text",
       message: "Complete login in your browser, or paste the authorization code here:",
-      signal: controller.signal,
+      signal: controller.signal
     })
     let settled = false
     const observed = pending.catch((error) => {
@@ -139,7 +143,7 @@ describe("host login interaction", () => {
     expect(JSON.parse(lines[0]!)).toEqual({
       type: "auth_url",
       url: "https://example.test/authorize",
-      instructions: "Open this page",
+      instructions: "Open this page"
     })
   })
 })
@@ -149,7 +153,7 @@ describe("keyless OAuth route", () => {
     const ctx = await composeRuntime({
       preset: "standard",
       piProviders: { anthropic: {} },
-      credentialsFile: tempFile(),
+      credentialsFile: tempFile()
     })
     try {
       const providers = (ctx as unknown as { llm: { listProviders: () => Array<{ id: string }> } }).llm

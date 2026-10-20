@@ -1,3 +1,37 @@
+import { mkdir, open, readdir, readFile, stat, truncate } from "node:fs/promises"
+import { dirname, join, resolve } from "node:path"
+
+import type { Context } from "@deepseek-ai/cordis"
+import { SESSION_FORMAT_VERSION, SessionId as makeSessionId, SessionLogOffset } from "@deepseek-ai/dsh-session"
+import type { SessionEvent, SessionHeader, SessionId, SessionSeedEventState } from "@deepseek-ai/dsh-session"
+import {
+  assertContiguous,
+  assertStoredId,
+  materializeAppendBatch,
+  materializeCreateHeader,
+  type SessionAccess,
+  SessionAlreadyExistsError,
+  SessionAlreadyOwnedError,
+  SessionFormatUnsupportedError,
+  type SessionHandle,
+  type SessionHandleAppendOptions,
+  SessionHandleClosedError,
+  type SessionHandleFlushOptions,
+  type SessionHandleReadOptions,
+  type SessionHandleReadResult,
+  type SessionLocation,
+  SessionPersistence,
+  SessionPersistenceCorruptionError,
+  type SessionPersistenceCreateOptions,
+  type SessionPersistenceListOptions,
+  SessionPersistenceNotFoundError,
+  type SessionPersistenceOpenOptions,
+  SessionPersistenceRevision,
+  type SessionPersistenceSnapshot,
+  type SessionPersistenceStatOptions,
+  SessionReadOnlyError,
+  validateStoredEvents
+} from "@deepseek-ai/dsh-session-persistence"
 /**
  * `ctx.sessionPersistence` provider that stores DSH sessions as ALwith session records
  * (`<projectsDir>/<project key>/<sessionId>.jsonl`, plain JSONL, Claude Code compatible).
@@ -14,40 +48,8 @@
  * the DSH events append after the CLI's lines, no header is inserted (append-only).
  */
 import z from "@deepseek-ai/schemastery"
-import type { Context } from "@deepseek-ai/cordis"
-import { SESSION_FORMAT_VERSION, SessionId as makeSessionId, SessionLogOffset } from "@deepseek-ai/dsh-session"
-import type { SessionEvent, SessionHeader, SessionId, SessionSeedEventState } from "@deepseek-ai/dsh-session"
-import {
-  SessionAlreadyExistsError,
-  SessionAlreadyOwnedError,
-  SessionFormatUnsupportedError,
-  SessionHandleClosedError,
-  SessionPersistence,
-  SessionPersistenceCorruptionError,
-  SessionPersistenceNotFoundError,
-  SessionPersistenceRevision,
-  SessionReadOnlyError,
-  assertContiguous,
-  assertStoredId,
-  materializeAppendBatch,
-  materializeCreateHeader,
-  validateStoredEvents,
-  type SessionAccess,
-  type SessionHandle,
-  type SessionHandleAppendOptions,
-  type SessionHandleFlushOptions,
-  type SessionHandleReadOptions,
-  type SessionHandleReadResult,
-  type SessionLocation,
-  type SessionPersistenceCreateOptions,
-  type SessionPersistenceListOptions,
-  type SessionPersistenceOpenOptions,
-  type SessionPersistenceSnapshot,
-  type SessionPersistenceStatOptions,
-} from "@deepseek-ai/dsh-session-persistence"
-import { mkdir, open, readdir, readFile, stat, truncate } from "node:fs/promises"
-import { dirname, join, resolve } from "node:path"
-import { decodeRecord, encodeBatch, headerLine, projectKey, type EncodeState, type RecordWriter } from "./record.ts"
+
+import { decodeRecord, encodeBatch, type EncodeState, headerLine, projectKey, type RecordWriter } from "./record.ts"
 
 export interface Config {
   /** `~/.alwith/projects`: the ALwith session library root. */
@@ -63,8 +65,16 @@ const LIST_PROBE_BYTES = 16 * 1024
 /** Live events published by the session store are batched into one durable append per window. */
 const LIVE_BATCH_WINDOW_MS = 200
 
-function fileRevision(identity: { dev: bigint; ino: bigint; size: bigint; mtimeNs: bigint; ctimeNs: bigint }): SessionPersistenceRevision {
-  return SessionPersistenceRevision([identity.dev, identity.ino, identity.size, identity.mtimeNs, identity.ctimeNs].join(":"))
+function fileRevision(identity: {
+  dev: bigint
+  ino: bigint
+  size: bigint
+  mtimeNs: bigint
+  ctimeNs: bigint
+}): SessionPersistenceRevision {
+  return SessionPersistenceRevision(
+    [identity.dev, identity.ino, identity.size, identity.mtimeNs, identity.ctimeNs].join(":")
+  )
 }
 
 function isENOENT(error: unknown): boolean {
@@ -155,17 +165,23 @@ class AlwithSessionHandle implements SessionHandle {
     readonly id: SessionId,
     readonly header: SessionHeader,
     readonly access: SessionAccess,
-    readonly state: HandleState,
+    readonly state: HandleState
   ) {}
 
   get inheritedEventCount(): SessionLogOffset {
     return this.state.inheritedEventCount
   }
 
-  async read(offset = 0, length = Number.MAX_SAFE_INTEGER, options?: SessionHandleReadOptions): Promise<SessionHandleReadResult> {
+  async read(
+    offset = 0,
+    length = Number.MAX_SAFE_INTEGER,
+    options?: SessionHandleReadOptions
+  ): Promise<SessionHandleReadResult> {
     this.assertOpen("read")
-    if (!Number.isSafeInteger(offset) || offset < 0) throw new TypeError(`read offset must be a non-negative safe integer, got ${String(offset)}`)
-    if (!Number.isSafeInteger(length) || length < 0) throw new TypeError(`read length must be a non-negative safe integer, got ${String(length)}`)
+    if (!Number.isSafeInteger(offset) || offset < 0)
+      throw new TypeError(`read offset must be a non-negative safe integer, got ${String(offset)}`)
+    if (!Number.isSafeInteger(length) || length < 0)
+      throw new TypeError(`read length must be a non-negative safe integer, got ${String(length)}`)
     options?.signal?.throwIfAborted()
     const primed = this.state.primed
     if (primed !== undefined && this.access === "write") return this.slice(primed, offset, length)
@@ -179,12 +195,18 @@ class AlwithSessionHandle implements SessionHandle {
     this.state.primed = undefined
     const stored = await this.storage.readStored(path, this.id, options?.signal)
     if (stored.events.length < this.observedLength) {
-      throw new Error(`session "${this.id}": stored log shrank below a previously observed prefix (${stored.events.length} < ${this.observedLength})`)
+      throw new Error(
+        `session "${this.id}": stored log shrank below a previously observed prefix (${stored.events.length} < ${this.observedLength})`
+      )
     }
     return this.slice(stored, offset, length)
   }
 
-  private slice(source: { events: readonly SessionEvent[]; eventState: SessionSeedEventState }, offset: number, length: number): SessionHandleReadResult {
+  private slice(
+    source: { events: readonly SessionEvent[]; eventState: SessionSeedEventState },
+    offset: number,
+    length: number
+  ): SessionHandleReadResult {
     this.observedLength = Math.max(this.observedLength, source.events.length)
     return { eventState: source.eventState, events: source.events.slice(offset, offset + length) }
   }
@@ -310,7 +332,7 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
     projectsDir: z.string().required(),
     providerId: z.string().default("deepseek"),
     writerName: z.string().default("@alwith-ai/dsh-agent"),
-    writerVersion: z.string().default("0.0.0"),
+    writerVersion: z.string().default("0.0.0")
   })
 
   override readonly name = "session-persistence-alwith"
@@ -325,7 +347,10 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
   private readonly pending = new Map<SessionId, PendingSession>()
   private counter = 0
 
-  constructor(ctx: Context, public config: Config) {
+  constructor(
+    ctx: Context,
+    public config: Config
+  ) {
     super(ctx)
     this.projectsDir = resolve(config.projectsDir)
     this.providerId = config.providerId ?? "deepseek"
@@ -336,11 +361,13 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
   /** Live session routing and teardown: one active write handle per id routes that session's published events. */
   private install(ctx: Context): void {
     ctx.on("session/event", (session, event) => {
-      this.writers.get(session.id)?.enqueueLive(event, error => {
-        ctx.logger.warn(`${this.name}: background write for session "${session.id}" failed (buffered events retained): ${String(error)}`)
+      this.writers.get(session.id)?.enqueueLive(event, (error) => {
+        ctx.logger.warn(
+          `${this.name}: background write for session "${session.id}" failed (buffered events retained): ${String(error)}`
+        )
       })
     })
-    ctx.on("session/flush", session => {
+    ctx.on("session/flush", (session) => {
       const writer = this.writers.get(session.id)
       if (writer === null || writer === undefined) return undefined
       return (async () => {
@@ -348,24 +375,27 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
         await writer.flush()
       })()
     })
-    ctx.on("session/disposed", session => {
+    ctx.on("session/disposed", (session) => {
       const writer = this.writers.get(session.id)
       if (writer === null || writer === undefined) return
-      writer.close().catch(error => {
+      writer.close().catch((error) => {
         ctx.logger.warn(`${this.name}: final drain for session "${session.id}" failed: ${String(error)}`)
       })
     })
-    ctx.effect(() => async () => {
-      const errors: unknown[] = []
-      for (const handle of [...this.openHandles]) {
-        try {
-          await handle.close()
-        } catch (error) {
-          errors.push(error)
+    ctx.effect(
+      () => async () => {
+        const errors: unknown[] = []
+        for (const handle of [...this.openHandles]) {
+          try {
+            await handle.close()
+          } catch (error) {
+            errors.push(error)
+          }
         }
-      }
-      if (errors.length > 0) throw new AggregateError(errors, `${this.name} dispose failed`)
-    }, `${this.name} open handles`)
+        if (errors.length > 0) throw new AggregateError(errors, `${this.name} dispose failed`)
+      },
+      `${this.name} open handles`
+    )
   }
 
   locate(meta: SessionHeader): SessionLocation {
@@ -382,7 +412,7 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
       throw new TypeError(
         snapshot.isSeeded
           ? `session "${snapshot.id}" is seeded; create needs its exact inheritedEventCount`
-          : `session "${snapshot.id}" is not seeded; create must not carry an inheritedEventCount`,
+          : `session "${snapshot.id}" is not seeded; create must not carry an inheritedEventCount`
       )
     }
     if (this.pending.has(snapshot.id) || (await this.findRecord(snapshot.id, options?.signal)) !== undefined) {
@@ -391,7 +421,11 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
     options?.signal?.throwIfAborted()
     if (this.writers.has(snapshot.id)) throw new SessionAlreadyExistsError(snapshot.id)
     this.writers.set(snapshot.id, null)
-    this.pending.set(snapshot.id, { header: snapshot, revision: SessionPersistenceRevision(`memory:${this.name}:${++this.counter}`), inheritedEventCount })
+    this.pending.set(snapshot.id, {
+      header: snapshot,
+      revision: SessionPersistenceRevision(`memory:${this.name}:${++this.counter}`),
+      inheritedEventCount
+    })
     return this.adopt(
       new AlwithSessionHandle(this, snapshot.id, snapshot, "write", {
         cursor: 0,
@@ -399,8 +433,8 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
         inheritedEventCount,
         tornTruncateTo: undefined,
         primed: undefined,
-        encode: { lastUuid: null, snapshotRefs: new Set(), systemPromptRef: null },
-      }),
+        encode: { lastUuid: null, snapshotRefs: new Set(), systemPromptRef: null }
+      })
     )
   }
 
@@ -416,8 +450,8 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
             inheritedEventCount: pending.inheritedEventCount,
             tornTruncateTo: undefined,
             primed: undefined,
-            encode: { lastUuid: null, snapshotRefs: new Set(), systemPromptRef: null },
-          }),
+            encode: { lastUuid: null, snapshotRefs: new Set(), systemPromptRef: null }
+          })
         )
       }
       const stored = await this.requireStored(id, options?.signal)
@@ -428,8 +462,8 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
           inheritedEventCount: stored.inheritedEventCount,
           tornTruncateTo: undefined,
           primed: stored,
-          encode: stored.encode,
-        }),
+          encode: stored.encode
+        })
       )
     }
     if (this.writers.has(id)) throw new SessionAlreadyOwnedError(id)
@@ -444,8 +478,8 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
           inheritedEventCount: stored.inheritedEventCount,
           tornTruncateTo: stored.tornTruncateTo,
           primed: stored,
-          encode: stored.encode,
-        }),
+          encode: stored.encode
+        })
       )
     } catch (error) {
       this.writers.delete(id)
@@ -549,7 +583,10 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
     try {
       decoded = decodeRecord(buffer, id)
     } catch (error) {
-      throw new SessionPersistenceCorruptionError(`session "${id}": ALwith record is corrupt: ${String(error)} (raw log: ${path})`, { cause: error })
+      throw new SessionPersistenceCorruptionError(
+        `session "${id}": ALwith record is corrupt: ${String(error)} (raw log: ${path})`,
+        { cause: error }
+      )
     }
     signal?.throwIfAborted()
     assertStoredId(id, decoded.meta)
@@ -565,7 +602,7 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
       eventState: "shared-frozen",
       revision,
       tornTruncateTo: decoded.committedBytes < buffer.byteLength ? decoded.committedBytes : undefined,
-      encode: decoded.state,
+      encode: decoded.state
     }
   }
 
@@ -590,7 +627,9 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
     } finally {
       await file.close()
     }
-    this.ctx.logger.warn(`${this.name}: session "${handle.id}" recovered from a torn tail; incomplete tail bytes were discarded`)
+    this.ctx.logger.warn(
+      `${this.name}: session "${handle.id}" recovered from a torn tail; incomplete tail bytes were discarded`
+    )
   }
 
   // ---- file mechanics ----
@@ -600,7 +639,11 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
   }
 
   private encode(handle: AlwithSessionHandle, events: readonly SessionEvent[]): string {
-    return encodeBatch({ recordId: handle.id, cwd: handle.header.cwd, providerId: this.providerId }, handle.state.encode, events)
+    return encodeBatch(
+      { recordId: handle.id, cwd: handle.header.cwd, providerId: this.providerId },
+      handle.state.encode,
+      events
+    )
   }
 
   /** First write of a DSH-created session: exclusive create, header + first batch, fsync file and directory. */
@@ -609,7 +652,10 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
     const path = this.recordPath(meta.cwd, meta.id)
     await mkdir(dirname(path), { recursive: true })
     const context = { recordId: meta.id, cwd: meta.cwd, providerId: this.providerId }
-    const header = headerLine(context, meta.createdAt, this.writer, { header: meta, inheritedEventCount: handle.state.inheritedEventCount })
+    const header = headerLine(context, meta.createdAt, this.writer, {
+      header: meta,
+      inheritedEventCount: handle.state.inheritedEventCount
+    })
     const content = `${header}\n${encodeBatch(context, handle.state.encode, events)}`
     let file
     try {
@@ -671,7 +717,9 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
       const tail = Buffer.alloc(now - size)
       if (tail.length > 0) await file.read(tail, 0, tail.length, size)
       if (!tail.equals(Buffer.from(attempted).subarray(0, tail.length))) {
-        throw new Error(`"${path}" has ${tail.length} bytes after the confirmed prefix that this writer did not write; not truncating`)
+        throw new Error(
+          `"${path}" has ${tail.length} bytes after the confirmed prefix that this writer did not write; not truncating`
+        )
       }
       if (now === size) return
       await file.truncate(size)
@@ -692,7 +740,10 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
   }
 
   /** Stat-stable read: retry while a concurrent append changes the revision between stat and read. */
-  private async readStableFile(path: string, signal?: AbortSignal): Promise<{ buffer: Buffer; revision: SessionPersistenceRevision }> {
+  private async readStableFile(
+    path: string,
+    signal?: AbortSignal
+  ): Promise<{ buffer: Buffer; revision: SessionPersistenceRevision }> {
     for (;;) {
       signal?.throwIfAborted()
       const before = fileRevision(await stat(path, { bigint: true }))
@@ -728,7 +779,7 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
     const [winner, ...shadowed] = sorted
     if (shadowed.length > 0) {
       this.ctx.logger.warn(
-        `${this.name}: record "${id}" exists under ${sorted.length} project directories; using the most recently written ${winner!.path}, shadowing ${shadowed.map(entry => entry.path).join(", ")}`,
+        `${this.name}: record "${id}" exists under ${sorted.length} project directories; using the most recently written ${winner!.path}, shadowing ${shadowed.map((entry) => entry.path).join(", ")}`
       )
     }
     return winner
@@ -743,7 +794,10 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
       if (isENOENT(error)) return []
       throw error
     }
-    return entries.filter(entry => entry.isDirectory()).map(entry => join(this.projectsDir, entry.name)).sort()
+    return entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => join(this.projectsDir, entry.name))
+      .sort()
   }
 
   private async listArtifacts(signal?: AbortSignal): Promise<Array<{ header: SessionHeader; path: string }>> {

@@ -15,77 +15,76 @@
  * service (cordis would otherwise hang the mount, not error).
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { Context } from "@deepseek-ai/cordis";
-import LlmRuntime from "@deepseek-ai/dsh-llm";
-import SessionStore from "@deepseek-ai/dsh-session";
-import SessionProjectionRegistry from "@deepseek-ai/dsh-session-projection";
-import SystemPrompt from "@deepseek-ai/dsh-system-prompt";
-import WorkingDirectoryService from "@deepseek-ai/dsh-working-directory";
-import ToolRuntime from "@deepseek-ai/dsh-tools";
-import AgentRegistry from "@deepseek-ai/dsh-agent";
-import AgentLoop from "@deepseek-ai/dsh-agent-loop";
-import * as JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl";
-import AlwithSessionPersistence from "./persistence/alwith.ts";
-import LocalSubprocessRuntime from "@deepseek-ai/dsh-subprocess-local";
-import LocalSandboxProvider from "@deepseek-ai/dsh-sandbox-local";
-import SandboxPolicyService from "@deepseek-ai/dsh-sandbox-policy";
-import SandboxBashExecutor from "@deepseek-ai/dsh-bash-sandbox";
-import SandboxedFileSystem from "@deepseek-ai/dsh-fs-sandbox";
-import LocalJobRegistry from "@deepseek-ai/dsh-jobs-local";
-import PermissionPresetService from "@deepseek-ai/dsh-permission-presets";
-import ApprovalService from "@deepseek-ai/dsh-user-approval";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { dirname } from "node:path"
+import { fileURLToPath } from "node:url"
+
+import { Context } from "@deepseek-ai/cordis"
+import AgentRegistry from "@deepseek-ai/dsh-agent"
+import AgentLoop from "@deepseek-ai/dsh-agent-loop"
+import AuthorizationService from "@deepseek-ai/dsh-authorization"
+import SandboxBashExecutor from "@deepseek-ai/dsh-bash-sandbox"
+import * as CommandCompact from "@deepseek-ai/dsh-command-compact"
+import CommandRegistry from "@deepseek-ai/dsh-commands"
+import BasicCompactionEngine from "@deepseek-ai/dsh-compaction-basic"
+import ToolResultPruner from "@deepseek-ai/dsh-compaction-tool-result-pruner"
+import CordisHostRunner from "@deepseek-ai/dsh-cordis-host-runner"
+import LocalCredentialProvider from "@deepseek-ai/dsh-credentials-local"
+import * as FsObservationPolicy from "@deepseek-ai/dsh-fs-observation-policy"
+import SandboxedFileSystem from "@deepseek-ai/dsh-fs-sandbox"
+import LocalJobRegistry from "@deepseek-ai/dsh-jobs-local"
+import LlmRuntime from "@deepseek-ai/dsh-llm"
 // Namespace imports rather than default: a module-plugin default export drops
 // `inject` (see dsh postmortem 0001). Service classes above carry inject as a
 // static and are safe as defaults.
-import * as LlmDeepseek from "@deepseek-ai/dsh-llm-deepseek-api-key";
-import * as LlmPiAi from "@deepseek-ai/dsh-llm-pi-ai";
-import LocalCredentialProvider from "@deepseek-ai/dsh-credentials-local";
-import AuthorizationService from "@deepseek-ai/dsh-authorization";
-import * as ShellEnv from "@deepseek-ai/dsh-shell-env";
-import * as FsObservationPolicy from "@deepseek-ai/dsh-fs-observation-policy";
-import * as ToolFs from "@deepseek-ai/dsh-tool-fs";
-import * as ToolBash from "@deepseek-ai/dsh-tool-bash";
-import * as ToolTodo from "@deepseek-ai/dsh-tool-todo";
-import * as ToolFsSearch from "@deepseek-ai/dsh-tool-fs-search";
-import * as ToolWeb from "@deepseek-ai/dsh-tool-web";
-import * as WebSearchDeepseek from "@deepseek-ai/dsh-web-search-deepseek";
-import * as AnchoredToolBootstrap from "./vendor/anchored-tool-bootstrap.mjs";
-// Official PTC process runtime with the Bun TypeScript-stripping adaptation.
-import BunPtcRuntime from "./ptc-runtime-bun.ts";
-import CordisHostRunner from "@deepseek-ai/dsh-cordis-host-runner";
-import * as ToolCordis from "@deepseek-ai/dsh-tool-cordis";
-import * as CordisInspectProviders from "@deepseek-ai/dsh-tool-cordis/host";
-import SkillRegistry from "@deepseek-ai/dsh-skill";
-import * as SkillFilesystem from "@deepseek-ai/dsh-skill-filesystem";
-import * as ToolSkill from "@deepseek-ai/dsh-tool-skill";
-import WebRuntime from "@deepseek-ai/dsh-web";
-import TerminalSessionService from "@deepseek-ai/dsh-terminal";
-import * as TerminalBash from "@deepseek-ai/dsh-terminal-bash";
-import * as ToolBashPersistent from "@deepseek-ai/dsh-tool-bash-persistent";
-import * as ToolStrReplaceEditor from "@deepseek-ai/dsh-tool-str-replace-editor";
-import { loadPresetPlugin, type PresetPackage } from "./preset-package.ts";
-import TokenMeter from "@deepseek-ai/dsh-token-meter";
-import CommandRegistry from "@deepseek-ai/dsh-commands";
-import BasicCompactionEngine from "@deepseek-ai/dsh-compaction-basic";
-import * as CommandCompact from "@deepseek-ai/dsh-command-compact";
-import ToolResultPruner from "@deepseek-ai/dsh-compaction-tool-result-pruner";
-import SubagentRuntime from "@deepseek-ai/dsh-subagent";
-import * as SubagentSpawnInProcess from "@deepseek-ai/dsh-subagent-spawn-in-process";
-import * as SubagentForkInProcess from "@deepseek-ai/dsh-subagent-fork-in-process";
-import * as ToolSubagentControl from "@deepseek-ai/dsh-tool-subagent-control";
-import * as ToolSubagentListAgents from "@deepseek-ai/dsh-tool-subagent-control/list-agents";
-import * as ToolSubagent from "@deepseek-ai/dsh-tool-subagent";
+import * as LlmDeepseek from "@deepseek-ai/dsh-llm-deepseek-api-key"
+import * as LlmPiAi from "@deepseek-ai/dsh-llm-pi-ai"
+import PermissionPresetService from "@deepseek-ai/dsh-permission-presets"
+import LocalSandboxProvider from "@deepseek-ai/dsh-sandbox-local"
+import SandboxPolicyService from "@deepseek-ai/dsh-sandbox-policy"
+import SessionStore from "@deepseek-ai/dsh-session"
+import * as JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl"
+import SessionProjectionRegistry from "@deepseek-ai/dsh-session-projection"
+import * as ShellEnv from "@deepseek-ai/dsh-shell-env"
+import SkillRegistry from "@deepseek-ai/dsh-skill"
+import * as SkillFilesystem from "@deepseek-ai/dsh-skill-filesystem"
+import SubagentRuntime from "@deepseek-ai/dsh-subagent"
+import * as SubagentForkInProcess from "@deepseek-ai/dsh-subagent-fork-in-process"
+import * as SubagentSpawnInProcess from "@deepseek-ai/dsh-subagent-spawn-in-process"
+import LocalSubprocessRuntime from "@deepseek-ai/dsh-subprocess-local"
+import SystemPrompt from "@deepseek-ai/dsh-system-prompt"
+import TerminalSessionService from "@deepseek-ai/dsh-terminal"
+import * as TerminalBash from "@deepseek-ai/dsh-terminal-bash"
+import TokenMeter from "@deepseek-ai/dsh-token-meter"
+import * as ToolBash from "@deepseek-ai/dsh-tool-bash"
+import * as ToolBashPersistent from "@deepseek-ai/dsh-tool-bash-persistent"
+import * as ToolCordis from "@deepseek-ai/dsh-tool-cordis"
+import * as CordisInspectProviders from "@deepseek-ai/dsh-tool-cordis/host"
+import * as ToolFs from "@deepseek-ai/dsh-tool-fs"
+import * as ToolFsSearch from "@deepseek-ai/dsh-tool-fs-search"
+import * as ToolSkill from "@deepseek-ai/dsh-tool-skill"
+import * as ToolStrReplaceEditor from "@deepseek-ai/dsh-tool-str-replace-editor"
+import * as ToolSubagent from "@deepseek-ai/dsh-tool-subagent"
+import * as ToolSubagentControl from "@deepseek-ai/dsh-tool-subagent-control"
+import * as ToolSubagentListAgents from "@deepseek-ai/dsh-tool-subagent-control/list-agents"
+import * as ToolTodo from "@deepseek-ai/dsh-tool-todo"
+import * as ToolWeb from "@deepseek-ai/dsh-tool-web"
+import ToolRuntime from "@deepseek-ai/dsh-tools"
+import ApprovalService from "@deepseek-ai/dsh-user-approval"
+import WebRuntime from "@deepseek-ai/dsh-web"
+import * as WebSearchDeepseek from "@deepseek-ai/dsh-web-search-deepseek"
+import WorkingDirectoryService from "@deepseek-ai/dsh-working-directory"
 
-export type HarnessPreset =
-  "standard" | "minimal" | "anchored" | "code" | "cordis";
+import AlwithSessionPersistence from "./persistence/alwith.ts"
+import { loadPresetPlugin, type PresetPackage } from "./preset-package.ts"
+// Official PTC process runtime with the Bun TypeScript-stripping adaptation.
+import BunPtcRuntime from "./ptc-runtime-bun.ts"
+import * as AnchoredToolBootstrap from "./vendor/anchored-tool-bootstrap.mjs"
+
+export type HarnessPreset = "standard" | "minimal" | "anchored" | "code" | "cordis"
 
 /** Bundled skill root (vendored from dsh's cordis preset; provenance in THIRD_PARTY_NOTICES). */
-const BUNDLED_SKILLS_DIR = fileURLToPath(
-  new URL("../skills/", import.meta.url),
-);
+const BUNDLED_SKILLS_DIR = fileURLToPath(new URL("../skills/", import.meta.url))
 
 /**
  * Cordis-preset persona, adapted from dsh's shipped `agent.cordis.yml`: the
@@ -97,19 +96,12 @@ const CORDIS_PERSONA =
   "You are a coding agent running on the DeepSeek Harness.\n\n" +
   "Its composition is Cordis: every capability is a plugin. Use the read-only Cordis tools " +
   "to inspect runtime APIs before writing plugin code.\n\n" +
-  "Load the `cordis-plugin-development` skill before defining or changing a plugin.";
-export type PermissionMode =
-  "read-only" | "workspace-write" | "danger-full-access";
+  "Load the `cordis-plugin-development` skill before defining or changing a plugin."
+export type PermissionMode = "read-only" | "workspace-write" | "danger-full-access"
 
-export const HARNESS_PRESETS: readonly HarnessPreset[] = [
-  "standard",
-  "minimal",
-  "anchored",
-  "code",
-  "cordis",
-];
+export const HARNESS_PRESETS: readonly HarnessPreset[] = ["standard", "minimal", "anchored", "code", "cordis"]
 
-export type PersistenceKind = "dsh" | "alwith";
+export type PersistenceKind = "dsh" | "alwith"
 
 export interface ResolvedComposeOptions {
   /**
@@ -117,23 +109,23 @@ export interface ResolvedComposeOptions {
    * `dsh` (default) is the upstream JSONL backend under `sessionsRoot`; `alwith`
    * stores sessions as ALwith session records under `projectsDir`.
    */
-  persistence?: PersistenceKind;
+  persistence?: PersistenceKind
   /** `dsh` provider root. Absent (with `persistence` unset) means no persistence — session/resume then fails loud. */
-  sessionsRoot?: string;
+  sessionsRoot?: string
   /** `alwith` provider root: the ALwith session library (`~/.alwith/projects`). */
-  projectsDir?: string;
+  projectsDir?: string
   /** Host provider identity stamped on records the `alwith` provider writes. */
-  providerId?: string;
+  providerId?: string
   /** This package's version, recorded as the writer in new ALwith records. */
-  writerVersion?: string;
-  workspaceRoot: string;
-  permissionMode: PermissionMode;
-  preset: HarnessPreset;
+  writerVersion?: string
+  workspaceRoot: string
+  permissionMode: PermissionMode
+  preset: HarnessPreset
   /**
    * A preset package extending `preset`: its persona prefix and skills replace
    * the built-in ones, and its plugin rows mount after the built-in roster.
    */
-  presetPackage?: PresetPackage;
+  presetPackage?: PresetPackage
   /**
    * Extra pi-ai provider routes (full upstream config shape passed through:
    * apiKeyEnv / baseURL / api / models / compat / …). Absent means the
@@ -141,40 +133,37 @@ export interface ResolvedComposeOptions {
    * direct-fetch adapter either way. An empty object mounts the adapter with
    * no routes: its catalog and sign-in flows exist from the moment it mounts.
    */
-  piProviders?: Record<string, unknown>;
+  piProviders?: Record<string, unknown>
   /**
    * The harness credential file (`dsh-credentials-local`). Present whenever
    * the pi-ai adapter is: a route declaring no apiKeyEnv authenticates through
    * the `llm-pi-ai/<provider>` record a subscription login committed here,
    * and pi-ai refreshes it in place.
    */
-  credentialsFile?: string;
+  credentialsFile?: string
 }
 
 export interface PluginRow {
   /** Stable id = dsh package short name (package minus the @deepseek-ai/dsh- prefix). */
-  id: string;
-  package: string;
-  description: string;
+  id: string
+  package: string
+  description: string
   /** Core rows keep the runtime coherent and cannot be disabled. */
-  core: boolean;
+  core: boolean
   /** Ids of toggleable rows this row's injected services come from. */
-  requires?: string[];
+  requires?: string[]
   /** Default config for this row under the resolved options (listing + mount input). */
-  config?: Record<string, unknown>;
+  config?: Record<string, unknown>
   /** Curated fields the desktop may edit without exposing arbitrary JSON. */
-  configurable?: PluginConfigField[];
+  configurable?: PluginConfigField[]
   /** Mounts the row; `config` is the effective (override-merged) config. */
-  mount: (
-    ctx: Context,
-    config: Record<string, unknown> | undefined,
-  ) => Promise<unknown>;
+  mount: (ctx: Context, config: Record<string, unknown> | undefined) => Promise<unknown>
 }
 
 export interface PluginConfigField {
-  key: string;
-  type: "number" | "url";
-  minimum?: number;
+  key: string
+  type: "number" | "url"
+  minimum?: number
 }
 
 function core(
@@ -183,7 +172,7 @@ function core(
   description: string,
   mount: PluginRow["mount"],
   config?: Record<string, unknown>,
-  configurable?: PluginConfigField[],
+  configurable?: PluginConfigField[]
 ): PluginRow {
   return {
     id,
@@ -192,8 +181,8 @@ function core(
     core: true,
     config,
     configurable,
-    mount,
-  };
+    mount
+  }
 }
 
 function tool(
@@ -203,7 +192,7 @@ function tool(
   mount: PluginRow["mount"],
   config?: Record<string, unknown>,
   requires?: string[],
-  configurable?: PluginConfigField[],
+  configurable?: PluginConfigField[]
 ): PluginRow {
   return {
     id,
@@ -213,25 +202,25 @@ function tool(
     config,
     requires,
     configurable,
-    mount,
-  };
+    mount
+  }
 }
 
 /** The composition for one preset, in mount order. */
 export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
-  const { preset, permissionMode, workspaceRoot } = options;
+  const { preset, permissionMode, workspaceRoot } = options
   const rows: PluginRow[] = [
     core(
       "llm",
       "@deepseek-ai/dsh-llm",
       "LLM runtime: adapter registry, model resolution, streaming",
-      async (ctx, config) => ctx.plugin(LlmRuntime, config as never),
+      async (ctx, config) => ctx.plugin(LlmRuntime, config as never)
     ),
     core(
       "session",
       "@deepseek-ai/dsh-session",
       "Append-only session event log (model-visible ⟺ recorded)",
-      async (ctx, config) => ctx.plugin(SessionStore, config as never),
+      async (ctx, config) => ctx.plugin(SessionStore, config as never)
     ),
     // Since dsh 0.1.2 the agent loop, sandbox policy and permission presets all
     // inject the projection registry (per-session derived views); without it
@@ -240,7 +229,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "session-projection",
       "@deepseek-ai/dsh-session-projection",
       "Session projection registry (derived per-session views)",
-      async (ctx, config) => ctx.plugin(SessionProjectionRegistry, config as never),
+      async (ctx, config) => ctx.plugin(SessionProjectionRegistry, config as never)
     ),
     // The anchored preset's phase 1 is persona-only, so the persona must be the
     // exact Minimal one-liner (dsh-persona is an agent-scope shadow and collides
@@ -256,7 +245,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
           ? { personaPrefix: "You are a helpful software engineer assistant." }
           : preset === "cordis"
             ? { personaPrefix: CORDIS_PERSONA }
-            : undefined,
+            : undefined
     ),
     // Context-global presentation is the tools row's `mode` field (presentAs is
     // the per-agent-scope variant used by dsh's preset realms).
@@ -265,13 +254,10 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "@deepseek-ai/dsh-tools",
       "Tool runtime: schema registry, dispatch, presentation mode",
       async (ctx, config) => ctx.plugin(ToolRuntime, config as never),
-      preset === "code" ? { mode: "ptc" } : undefined,
+      preset === "code" ? { mode: "ptc" } : undefined
     ),
-    core(
-      "agent",
-      "@deepseek-ai/dsh-agent",
-      "Agent registry (definitions and scopes)",
-      async (ctx, config) => ctx.plugin(AgentRegistry, config as never),
+    core("agent", "@deepseek-ai/dsh-agent", "Agent registry (definitions and scopes)", async (ctx, config) =>
+      ctx.plugin(AgentRegistry, config as never)
     ),
     core(
       "agent-loop",
@@ -279,15 +265,15 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "The turn loop: prompt → model → tools → settlement",
       async (ctx, config) => ctx.plugin(AgentLoop, config as never),
       { agents: [], maxParallelToolCalls: 10 },
-      [{ key: "maxParallelToolCalls", type: "number", minimum: 1 }],
+      [{ key: "maxParallelToolCalls", type: "number", minimum: 1 }]
     ),
     core(
       "llm-deepseek",
       "@deepseek-ai/dsh-llm-deepseek-api-key",
       "DeepSeek model adapter ($DEEPSEEK_API_KEY)",
-      async (ctx, config) => ctx.plugin(LlmDeepseek, config as never),
-    ),
-  ];
+      async (ctx, config) => ctx.plugin(LlmDeepseek, config as never)
+    )
+  ]
   if (options.credentialsFile !== undefined) {
     // The credential plane the pi-ai adapter signs into and reads from:
     // records (`llm-pi-ai/<provider>` grants) live in this private file, and
@@ -300,15 +286,15 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
         "@deepseek-ai/dsh-credentials-local",
         "Local credential store (subscription grants, API keys)",
         async (ctx, config) => ctx.plugin(LocalCredentialProvider, config as never),
-        { path: options.credentialsFile },
+        { path: options.credentialsFile }
       ),
       core(
         "authorization",
         "@deepseek-ai/dsh-authorization",
         "Authorization flow registry (provider sign-ins)",
-        async (ctx, config) => ctx.plugin(AuthorizationService, config as never),
-      ),
-    );
+        async (ctx, config) => ctx.plugin(AuthorizationService, config as never)
+      )
+    )
   }
   if (options.piProviders !== undefined) {
     rows.push(
@@ -317,67 +303,61 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
         "@deepseek-ai/dsh-llm-pi-ai",
         "Multi-provider adapter (pi-ai catalog: openai / anthropic / google / …)",
         async (ctx, config) => ctx.plugin(LlmPiAi, config as never),
-        { providers: options.piProviders },
-      ),
-    );
+        { providers: options.piProviders }
+      )
+    )
   }
-  const persistence = options.persistence ?? (options.sessionsRoot === undefined ? undefined : "dsh");
+  const persistence = options.persistence ?? (options.sessionsRoot === undefined ? undefined : "dsh")
   if (persistence === "alwith") {
     if (options.projectsDir === undefined) {
-      throw new Error("persistence \"alwith\" requires projectsDir (the ALwith session library root)");
+      throw new Error('persistence "alwith" requires projectsDir (the ALwith session library root)')
     }
     rows.push(
       core(
         "session-persistence-alwith",
         "@alwith-ai/dsh-agent/persistence/alwith",
         "ALwith session records (session/resume source; Claude Code compatible JSONL)",
-        async (ctx, config) =>
-          ctx.plugin(AlwithSessionPersistence, config as never),
+        async (ctx, config) => ctx.plugin(AlwithSessionPersistence, config as never),
         {
           projectsDir: options.projectsDir,
           ...(options.providerId === undefined ? {} : { providerId: options.providerId }),
-          ...(options.writerVersion === undefined ? {} : { writerVersion: options.writerVersion }),
-        },
-      ),
-    );
+          ...(options.writerVersion === undefined ? {} : { writerVersion: options.writerVersion })
+        }
+      )
+    )
   } else if (persistence === "dsh") {
     if (options.sessionsRoot === undefined) {
-      throw new Error("persistence \"dsh\" requires sessionsRoot");
+      throw new Error('persistence "dsh" requires sessionsRoot')
     }
     rows.push(
       core(
         "session-persistence-jsonl",
         "@deepseek-ai/dsh-session-persistence-jsonl",
         "JSONL session logs (session/resume source)",
-        async (ctx, config) =>
-          ctx.plugin(JsonlSessionPersistence, config as never),
-        { root: options.sessionsRoot },
-      ),
-    );
+        async (ctx, config) => ctx.plugin(JsonlSessionPersistence, config as never),
+        { root: options.sessionsRoot }
+      )
+    )
   }
   rows.push(
     // Execution world, sandbox-first as in dsh's shipped base bundle: commands
     // run inside the OS sandbox; a denial asks the user only when the model
     // escalates with sandbox_permissions. Configs mirror the bundle rows.
-    core(
-      "subprocess-local",
-      "@deepseek-ai/dsh-subprocess-local",
-      "Local subprocess runtime",
-      async (ctx, config) =>
-        ctx.plugin(LocalSubprocessRuntime, config as never),
+    core("subprocess-local", "@deepseek-ai/dsh-subprocess-local", "Local subprocess runtime", async (ctx, config) =>
+      ctx.plugin(LocalSubprocessRuntime, config as never)
     ),
     core(
       "sandbox-local",
       "@deepseek-ai/dsh-sandbox-local",
       "OS sandbox provider (seatbelt on macOS)",
-      async (ctx, config) => ctx.plugin(LocalSandboxProvider, config as never),
+      async (ctx, config) => ctx.plugin(LocalSandboxProvider, config as never)
     ),
     core(
       "sandbox-policy",
       "@deepseek-ai/dsh-sandbox-policy",
       "Sandbox policy (mode + workspace root)",
       async (ctx, config) => ctx.plugin(SandboxPolicyService, config as never),
-      { mode: permissionMode, workspaceRoot },
+      { mode: permissionMode, workspaceRoot }
     ),
     core(
       "bash-sandbox",
@@ -387,39 +367,30 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       { timeoutMs: 60000, maxOutputBytes: 64000 },
       [
         { key: "timeoutMs", type: "number", minimum: 1 },
-        { key: "maxOutputBytes", type: "number", minimum: 1 },
-      ],
+        { key: "maxOutputBytes", type: "number", minimum: 1 }
+      ]
     ),
-    core(
-      "fs-sandbox",
-      "@deepseek-ai/dsh-fs-sandbox",
-      "Sandbox-policied filesystem service",
-      async (ctx, config) => ctx.plugin(SandboxedFileSystem, config as never),
+    core("fs-sandbox", "@deepseek-ai/dsh-fs-sandbox", "Sandbox-policied filesystem service", async (ctx, config) =>
+      ctx.plugin(SandboxedFileSystem, config as never)
     ),
     core(
       "working-directory",
       "@deepseek-ai/dsh-working-directory",
       "Session working directory for tools and subagents",
       async (ctx, config) => ctx.plugin(WorkingDirectoryService, config as never),
-      { defaultDirectory: options.workspaceRoot },
+      { defaultDirectory: options.workspaceRoot }
     ),
-    core(
-      "jobs-local",
-      "@deepseek-ai/dsh-jobs-local",
-      "Local background job registry",
-      async (ctx, config) => ctx.plugin(LocalJobRegistry, config as never),
+    core("jobs-local", "@deepseek-ai/dsh-jobs-local", "Local background job registry", async (ctx, config) =>
+      ctx.plugin(LocalJobRegistry, config as never)
     ),
-    core(
-      "shell-env",
-      "@deepseek-ai/dsh-shell-env",
-      "Shell environment capture for subprocesses",
-      async (ctx, config) => ctx.plugin(ShellEnv, config as never),
+    core("shell-env", "@deepseek-ai/dsh-shell-env", "Shell environment capture for subprocesses", async (ctx, config) =>
+      ctx.plugin(ShellEnv, config as never)
     ),
     core(
       "fs-observation-policy",
       "@deepseek-ai/dsh-fs-observation-policy",
       "Read-before-write observation policy",
-      async (ctx, config) => ctx.plugin(FsObservationPolicy, config as never),
+      async (ctx, config) => ctx.plugin(FsObservationPolicy, config as never)
     ),
     // One-shot approvals ('ask' pairs with read-only/workspace-write presets);
     // the ACP bridge answers them over the wire.
@@ -428,24 +399,23 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "@deepseek-ai/dsh-user-approval",
       "One-shot escalation approvals (bridged over ACP)",
       async (ctx, config) => ctx.plugin(ApprovalService, config as never),
-      { policy: permissionMode === "danger-full-access" ? "never" : "ask" },
+      { policy: permissionMode === "danger-full-access" ? "never" : "ask" }
     ),
     core(
       "permission-presets",
       "@deepseek-ai/dsh-permission-presets",
       "Named permission presets (sandbox × approval)",
-      async (ctx, config) =>
-        ctx.plugin(PermissionPresetService, config as never),
+      async (ctx, config) => ctx.plugin(PermissionPresetService, config as never),
       {
         presets: {
           "read-only": { sandbox: "read-only", approval: "ask" },
           "workspace-write": { sandbox: "workspace-write", approval: "ask" },
           "danger-full-access": {
             sandbox: "danger-full-access",
-            approval: "never",
-          },
-        },
-      },
+            approval: "never"
+          }
+        }
+      }
     ),
     // Context accounting and compaction (dsh-base's host plane): the token meter
     // prices every surface node; the basic engine compacts on step pressure and
@@ -455,64 +425,54 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "token-meter",
       "@deepseek-ai/dsh-token-meter",
       "Token meter (per-session context accounting)",
-      async (ctx, config) => ctx.plugin(TokenMeter, config as never),
+      async (ctx, config) => ctx.plugin(TokenMeter, config as never)
     ),
-    core(
-      "commands",
-      "@deepseek-ai/dsh-commands",
-      "Slash command registry",
-      async (ctx, config) => ctx.plugin(CommandRegistry, config as never),
+    core("commands", "@deepseek-ai/dsh-commands", "Slash command registry", async (ctx, config) =>
+      ctx.plugin(CommandRegistry, config as never)
     ),
     core(
       "compaction-basic",
       "@deepseek-ai/dsh-compaction-basic",
       "Automatic context compaction (pressure + overflow recovery)",
-      async (ctx, config) => ctx.plugin(BasicCompactionEngine, config as never),
+      async (ctx, config) => ctx.plugin(BasicCompactionEngine, config as never)
     ),
     core(
       "command-compact",
       "@deepseek-ai/dsh-command-compact",
       "/compact command over the mounted compaction engine",
-      async (ctx, config) => ctx.plugin(CommandCompact, config as never),
+      async (ctx, config) => ctx.plugin(CommandCompact, config as never)
     ),
     core(
       "compaction-tool-result-pruner",
       "@deepseek-ai/dsh-compaction-tool-result-pruner",
       "Trims oversized tool results before the model sees them",
       async (ctx, config) => ctx.plugin(ToolResultPruner, config as never),
-      { thresholdChars: 8192, headChars: 4096, tailChars: 1024 },
+      { thresholdChars: 8192, headChars: 4096, tailChars: 1024 }
     ),
     // Delegation host plane: the subagent registry and its in-process backends.
     // The model-facing delegation tools are preset rows below.
-    core(
-      "subagent",
-      "@deepseek-ai/dsh-subagent",
-      "Subagent registry (delegated child agents)",
-      async (ctx, config) => ctx.plugin(SubagentRuntime, config as never),
+    core("subagent", "@deepseek-ai/dsh-subagent", "Subagent registry (delegated child agents)", async (ctx, config) =>
+      ctx.plugin(SubagentRuntime, config as never)
     ),
     core(
       "subagent-spawn-in-process",
       "@deepseek-ai/dsh-subagent-spawn-in-process",
       "Spawn backend: a fresh child agent in this process",
       async (ctx, config) => ctx.plugin(SubagentSpawnInProcess, config as never),
-      { providerName: "spawn" },
+      { providerName: "spawn" }
     ),
     core(
       "subagent-fork-in-process",
       "@deepseek-ai/dsh-subagent-fork-in-process",
       "Fork backend: a child inheriting the parent's history",
       async (ctx, config) => ctx.plugin(SubagentForkInProcess, config as never),
-      { providerName: "fork" },
-    ),
-  );
+      { providerName: "fork" }
+    )
+  )
   // Model-facing tools per preset (configs mirror dsh's shipped rows).
   const terminalTrio: PluginRow[] = [
-    tool(
-      "terminal",
-      "@deepseek-ai/dsh-terminal",
-      "Persistent terminal session service",
-      async (ctx, config) =>
-        ctx.plugin(TerminalSessionService, config as never),
+    tool("terminal", "@deepseek-ai/dsh-terminal", "Persistent terminal session service", async (ctx, config) =>
+      ctx.plugin(TerminalSessionService, config as never)
     ),
     tool(
       "terminal-bash",
@@ -520,7 +480,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "Bash over the persistent terminal",
       async (ctx, config) => ctx.plugin(TerminalBash, config as never),
       undefined,
-      ["terminal"],
+      ["terminal"]
     ),
     tool(
       "tool-bash-persistent",
@@ -528,36 +488,33 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "bash tool (persistent shell)",
       async (ctx, config) => ctx.plugin(ToolBashPersistent, config as never),
       undefined,
-      ["terminal", "terminal-bash"],
+      ["terminal", "terminal-bash"]
     ),
     tool(
       "tool-str-replace-editor",
       "@deepseek-ai/dsh-tool-str-replace-editor",
       "str_replace_editor tool (view/create/str_replace)",
       async (ctx, config) => ctx.plugin(ToolStrReplaceEditor, config as never),
-      { maxOutputChars: 16000 },
-    ),
-  ];
+      { maxOutputChars: 16000 }
+    )
+  ]
   const codingTools: PluginRow[] = [
-    tool(
-      "tool-fs",
-      "@deepseek-ai/dsh-tool-fs",
-      "read / write / edit file tools",
-      async (ctx, config) => ctx.plugin(ToolFs, config as never),
+    tool("tool-fs", "@deepseek-ai/dsh-tool-fs", "read / write / edit file tools", async (ctx, config) =>
+      ctx.plugin(ToolFs, config as never)
     ),
     tool(
       "tool-fs-search",
       "@deepseek-ai/dsh-tool-fs-search",
       "glob / grep search tools",
       async (ctx, config) => ctx.plugin(ToolFsSearch, config as never),
-      { sampleOverCapGlobResults: false },
+      { sampleOverCapGlobResults: false }
     ),
     tool(
       "tool-todo",
       "@deepseek-ai/dsh-tool-todo",
       "todo_write plan tool",
       async (ctx, config) => ctx.plugin(ToolTodo, config as never),
-      { allowParallelInProgress: true },
+      { allowParallelInProgress: true }
     ),
     // Web search rides the same DeepSeek key; fetch stays off as in the
     // shipped bundle (tool-web { fetch: false }).
@@ -566,7 +523,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "@deepseek-ai/dsh-web",
       "Web runtime (search provider registry)",
       async (ctx, config) => ctx.plugin(WebRuntime, config as never),
-      { searchProvider: "deepseek-official" },
+      { searchProvider: "deepseek-official" }
     ),
     tool(
       "web-search-deepseek",
@@ -576,13 +533,13 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       {
         apiKeyEnv: "DEEPSEEK_API_KEY",
         baseURL: "https://api.deepseek.com/anthropic/v1",
-        maxUses: 5,
+        maxUses: 5
       },
       ["web"],
       [
         { key: "baseURL", type: "url" },
-        { key: "maxUses", type: "number", minimum: 1 },
-      ],
+        { key: "maxUses", type: "number", minimum: 1 }
+      ]
     ),
     tool(
       "tool-web",
@@ -590,12 +547,12 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "web_search tool",
       async (ctx, config) => ctx.plugin(ToolWeb, config as never),
       { fetch: false, searchTimeoutMs: 60000 },
-      ["web", "web-search-deepseek"],
-    ),
-  ];
+      ["web", "web-search-deepseek"]
+    )
+  ]
   if (preset === "minimal") {
     // dsh's minimal preset: a two-tool coding agent — persistent bash + str_replace_editor.
-    rows.push(...terminalTrio);
+    rows.push(...terminalTrio)
   } else if (preset === "anchored") {
     // Community "anchored standard" (dsh-liangshen / xiaobright): the FIRST
     // model request sees only the Minimal two-tool surface plus a one-line
@@ -609,8 +566,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
         "anchored-tool-bootstrap",
         "dsh-liangshen (vendored)",
         "Anchored two-phase tool bootstrap",
-        async (ctx, config) =>
-          ctx.plugin(AnchoredToolBootstrap, config as never),
+        async (ctx, config) => ctx.plugin(AnchoredToolBootstrap, config as never),
         {
           shellTools: ["bash"],
           commonTools: ["str_replace_editor"],
@@ -619,26 +575,16 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
           maxBootstrapSteps: 4,
           promoteAfterFirstResponse: true,
           bootstrapMaxTokens: 1024,
-          compactionTools: [
-            "read",
-            "write",
-            "edit",
-            "glob",
-            "grep",
-            "todo_write",
-          ],
-          deferredSources: [],
-        },
-      ),
-    );
+          compactionTools: ["read", "write", "edit", "glob", "grep", "todo_write"],
+          deferredSources: []
+        }
+      )
+    )
   } else {
     // standard, code, cordis share the coding-agent tool surface.
     rows.push(
-      tool(
-        "tool-bash",
-        "@deepseek-ai/dsh-tool-bash",
-        "bash tool (ephemeral, sandboxed)",
-        async (ctx, config) => ctx.plugin(ToolBash, config as never),
+      tool("tool-bash", "@deepseek-ai/dsh-tool-bash", "bash tool (ephemeral, sandboxed)", async (ctx, config) =>
+        ctx.plugin(ToolBash, config as never)
       ),
       ...codingTools,
       // Delegation tools (dsh-base rows): continuable spawn children plus the
@@ -648,29 +594,29 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
         "tool-subagent-control",
         "@deepseek-ai/dsh-tool-subagent-control",
         "send_message to a continuable child agent",
-        async (ctx, config) => ctx.plugin(ToolSubagentControl, config as never),
+        async (ctx, config) => ctx.plugin(ToolSubagentControl, config as never)
       ),
       tool(
         "tool-subagent-list-agents",
         "@deepseek-ai/dsh-tool-subagent-control/list-agents",
         "list_agents (running child agents)",
-        async (ctx, config) => ctx.plugin(ToolSubagentListAgents, config as never),
+        async (ctx, config) => ctx.plugin(ToolSubagentListAgents, config as never)
       ),
       tool(
         "tool-subagent",
         "@deepseek-ai/dsh-tool-subagent",
         "subagent tool (spawn a child agent)",
         async (ctx, config) => ctx.plugin(ToolSubagent, config as never),
-        { provider: "spawn", toolName: "subagent", backgroundMode: "continuable" },
+        { provider: "spawn", toolName: "subagent", backgroundMode: "continuable" }
       ),
       tool(
         "tool-subagent-fork",
         "@deepseek-ai/dsh-tool-subagent",
         "subagent_fork tool (child inheriting this history)",
         async (ctx, config) => ctx.plugin(ToolSubagent, config as never),
-        { provider: "fork", toolName: "subagent_fork", backgroundMode: "one-shot" },
-      ),
-    );
+        { provider: "fork", toolName: "subagent_fork", backgroundMode: "one-shot" }
+      )
+    )
     if (preset === "code") {
       // PTC host and sandboxed execution processes both run on Bun.
       rows.push(
@@ -678,9 +624,9 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
           "ptc-runtime-bun",
           "@deepseek-ai/dsh-ptc-runtime-node",
           "PTC process runtime on Bun (run_code)",
-          async (ctx, config) => ctx.plugin(BunPtcRuntime, config as never),
-        ),
-      );
+          async (ctx, config) => ctx.plugin(BunPtcRuntime, config as never)
+        )
+      )
     }
     if (preset === "cordis") {
       // Upstream Cordis now exposes read-only discovery of the live runtime.
@@ -689,7 +635,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
           "cordis-host-runner",
           "@deepseek-ai/dsh-cordis-host-runner",
           "Host registry for Cordis runtime inspection",
-          async (ctx, config) => ctx.plugin(CordisHostRunner, config as never),
+          async (ctx, config) => ctx.plugin(CordisHostRunner, config as never)
         ),
         tool(
           "cordis-inspect-providers",
@@ -697,7 +643,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
           "Host runtime inspection providers",
           async (ctx, config) => ctx.plugin(CordisInspectProviders, config as never),
           undefined,
-          ["cordis-host-runner"],
+          ["cordis-host-runner"]
         ),
         tool(
           "tool-cordis",
@@ -705,16 +651,13 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
           "Read-only Cordis runtime inspection tools",
           async (ctx, config) => ctx.plugin(ToolCordis, config as never),
           undefined,
-          ["cordis-host-runner"],
+          ["cordis-host-runner"]
         ),
         // The composition-authoring skill travels with the preset (mirrors
         // dsh's shipped cordis preset): registry + filesystem provider over
         // the bundled skills/ dir + the skill tool the model calls.
-        tool(
-          "skill",
-          "@deepseek-ai/dsh-skill",
-          "Skill registry (session skill catalog)",
-          async (ctx, config) => ctx.plugin(SkillRegistry, config as never),
+        tool("skill", "@deepseek-ai/dsh-skill", "Skill registry (session skill catalog)", async (ctx, config) =>
+          ctx.plugin(SkillRegistry, config as never)
         ),
         tool(
           "skill-filesystem",
@@ -722,7 +665,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
           "Filesystem skill provider (bundled skills/)",
           async (ctx, config) => ctx.plugin(SkillFilesystem, config as never),
           { customSkillDirs: [BUNDLED_SKILLS_DIR] },
-          ["skill"],
+          ["skill"]
         ),
         tool(
           "tool-skill",
@@ -730,27 +673,24 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
           "skill tool (load bundled skill instructions)",
           async (ctx, config) => ctx.plugin(ToolSkill, config as never),
           undefined,
-          ["skill"],
-        ),
-      );
+          ["skill"]
+        )
+      )
     }
   }
-  const pkg = options.presetPackage;
+  const pkg = options.presetPackage
   if (pkg !== undefined) {
     // A package's skills ride the same registry rows the cordis preset mounts;
     // when the base preset already mounts them, only the directory is added.
     if (pkg.manifest.skillsDir !== undefined) {
-      const skillRow = rows.find((row) => row.id === "skill-filesystem");
+      const skillRow = rows.find((row) => row.id === "skill-filesystem")
       if (skillRow !== undefined) {
-        const dirs = (skillRow.config?.customSkillDirs as string[] | undefined) ?? [];
-        skillRow.config = { ...skillRow.config, customSkillDirs: [...dirs, pkg.manifest.skillsDir] };
+        const dirs = (skillRow.config?.customSkillDirs as string[] | undefined) ?? []
+        skillRow.config = { ...skillRow.config, customSkillDirs: [...dirs, pkg.manifest.skillsDir] }
       } else {
         rows.push(
-          tool(
-            "skill",
-            "@deepseek-ai/dsh-skill",
-            "Skill registry (session skill catalog)",
-            async (ctx, config) => ctx.plugin(SkillRegistry, config as never),
+          tool("skill", "@deepseek-ai/dsh-skill", "Skill registry (session skill catalog)", async (ctx, config) =>
+            ctx.plugin(SkillRegistry, config as never)
           ),
           tool(
             "skill-filesystem",
@@ -758,7 +698,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
             `Filesystem skill provider (${pkg.manifest.name} preset skills)`,
             async (ctx, config) => ctx.plugin(SkillFilesystem, config as never),
             { customSkillDirs: [pkg.manifest.skillsDir] },
-            ["skill"],
+            ["skill"]
           ),
           tool(
             "tool-skill",
@@ -766,17 +706,15 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
             "skill tool (load skill instructions)",
             async (ctx, config) => ctx.plugin(ToolSkill, config as never),
             undefined,
-            ["skill"],
-          ),
-        );
+            ["skill"]
+          )
+        )
       }
     }
-    const builtIn = new Set(rows.map((row) => row.id));
+    const builtIn = new Set(rows.map((row) => row.id))
     for (const spec of pkg.manifest.plugins) {
       if (builtIn.has(spec.id)) {
-        throw new Error(
-          `preset package ${pkg.dir}: plugin id "${spec.id}" collides with a built-in row`,
-        );
+        throw new Error(`preset package ${pkg.dir}: plugin id "${spec.id}" collides with a built-in row`)
       }
       rows.push(
         tool(
@@ -785,107 +723,93 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
           spec.description ?? `${pkg.manifest.name} preset plugin`,
           async (ctx, config) => ctx.plugin((await loadPresetPlugin(pkg, spec)) as never, config as never),
           spec.config,
-          spec.requires,
-        ),
-      );
+          spec.requires
+        )
+      )
     }
   }
-  return rows;
+  return rows
 }
 
 /** Every id any preset can compose — the vocabulary the overrides file may reference. */
 export function allPluginIds(): Set<string> {
-  const ids = new Set<string>();
+  const ids = new Set<string>()
   for (const preset of HARNESS_PRESETS) {
     for (const row of pluginRows({
       sessionsRoot: "/",
       workspaceRoot: "/",
       permissionMode: "workspace-write",
-      preset,
+      preset
     })) {
-      ids.add(row.id);
+      ids.add(row.id)
     }
   }
-  return ids;
+  return ids
 }
 
 /** User overrides: hand-editable, also written by the `plugins` CLI. */
 export interface PluginOverrides {
-  disabled?: string[];
+  disabled?: string[]
   /** Shallow-merged over the row's default config. */
-  config?: Record<string, Record<string, unknown>>;
+  config?: Record<string, Record<string, unknown>>
 }
 
 export function loadPluginOverrides(file: string): PluginOverrides {
-  if (!existsSync(file)) return {};
-  let parsed: unknown;
+  if (!existsSync(file)) return {}
+  let parsed: unknown
   try {
-    parsed = JSON.parse(readFileSync(file, "utf8"));
+    parsed = JSON.parse(readFileSync(file, "utf8"))
   } catch (error) {
-    throw new Error(
-      `plugin overrides file ${file} is not valid JSON: ${String(error)}`,
-    );
+    throw new Error(`plugin overrides file ${file} is not valid JSON: ${String(error)}`)
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error(`plugin overrides file ${file} must contain a JSON object`);
+    throw new Error(`plugin overrides file ${file} must contain a JSON object`)
   }
-  const overrides = parsed as PluginOverrides;
+  const overrides = parsed as PluginOverrides
   if (
     overrides.disabled !== undefined &&
-    !(
-      Array.isArray(overrides.disabled) &&
-      overrides.disabled.every((id) => typeof id === "string")
-    )
+    !(Array.isArray(overrides.disabled) && overrides.disabled.every((id) => typeof id === "string"))
   ) {
-    throw new Error(
-      `plugin overrides file ${file}: "disabled" must be an array of plugin ids`,
-    );
+    throw new Error(`plugin overrides file ${file}: "disabled" must be an array of plugin ids`)
   }
   if (
     overrides.config !== undefined &&
-    (typeof overrides.config !== "object" ||
-      overrides.config === null ||
-      Array.isArray(overrides.config))
+    (typeof overrides.config !== "object" || overrides.config === null || Array.isArray(overrides.config))
   ) {
-    throw new Error(
-      `plugin overrides file ${file}: "config" must be an object keyed by plugin id`,
-    );
+    throw new Error(`plugin overrides file ${file}: "config" must be an object keyed by plugin id`)
   }
-  return { disabled: overrides.disabled, config: overrides.config };
+  return { disabled: overrides.disabled, config: overrides.config }
 }
 
-export function savePluginOverrides(
-  file: string,
-  overrides: PluginOverrides,
-): void {
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, `${JSON.stringify(overrides, null, 2)}\n`);
+export function savePluginOverrides(file: string, overrides: PluginOverrides): void {
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, `${JSON.stringify(overrides, null, 2)}\n`)
 }
 
 /** One row of the resolved composition as the host UI sees it. */
 export interface PluginListing {
-  id: string;
-  package: string;
-  description: string;
-  core: boolean;
-  enabled: boolean;
-  requires?: string[];
-  config?: Record<string, unknown>;
+  id: string
+  package: string
+  description: string
+  core: boolean
+  enabled: boolean
+  requires?: string[]
+  config?: Record<string, unknown>
   /** Composition-owned values before user overrides. */
-  defaultConfig?: Record<string, unknown>;
+  defaultConfig?: Record<string, unknown>
   /** User-owned values only; absent keys inherit the composition default. */
-  overrideConfig?: Record<string, unknown>;
-  configurable?: PluginConfigField[];
+  overrideConfig?: Record<string, unknown>
+  configurable?: PluginConfigField[]
 }
 
 export interface ResolvedPlugins {
   /** Rows to mount, in order, with effective configs. */
   mounted: Array<{
-    row: PluginRow;
-    config: Record<string, unknown> | undefined;
-  }>;
+    row: PluginRow
+    config: Record<string, unknown> | undefined
+  }>
   /** Every row of the preset (enabled and disabled) for listing. */
-  listing: PluginListing[];
+  listing: PluginListing[]
 }
 
 /**
@@ -893,54 +817,41 @@ export interface ResolvedPlugins {
  * a core row, and disabling a row another enabled row `requires` (cordis would
  * hang the dependent mount instead of erroring).
  */
-export function resolvePlugins(
-  rows: PluginRow[],
-  overrides: PluginOverrides,
-): ResolvedPlugins {
-  const known = allPluginIds();
-  for (const row of rows) known.add(row.id);
+export function resolvePlugins(rows: PluginRow[], overrides: PluginOverrides): ResolvedPlugins {
+  const known = allPluginIds()
+  for (const row of rows) known.add(row.id)
   for (const id of overrides.disabled ?? []) {
     if (!known.has(id))
-      throw new Error(
-        `unknown plugin id "${id}" in overrides (known: ${[...known].sort().join(", ")})`,
-      );
+      throw new Error(`unknown plugin id "${id}" in overrides (known: ${[...known].sort().join(", ")})`)
   }
   for (const id of Object.keys(overrides.config ?? {})) {
     if (!known.has(id))
-      throw new Error(
-        `unknown plugin id "${id}" in overrides config (known: ${[...known].sort().join(", ")})`,
-      );
+      throw new Error(`unknown plugin id "${id}" in overrides config (known: ${[...known].sort().join(", ")})`)
   }
-  const disabled = new Set(overrides.disabled ?? []);
+  const disabled = new Set(overrides.disabled ?? [])
   for (const row of rows) {
     if (row.core && disabled.has(row.id)) {
-      throw new Error(
-        `plugin "${row.id}" is a core row and cannot be disabled`,
-      );
+      throw new Error(`plugin "${row.id}" is a core row and cannot be disabled`)
     }
   }
-  const presentIds = new Set(rows.map((row) => row.id));
+  const presentIds = new Set(rows.map((row) => row.id))
   for (const row of rows) {
-    if (disabled.has(row.id)) continue;
+    if (disabled.has(row.id)) continue
     for (const dependency of row.requires ?? []) {
       if (disabled.has(dependency) || !presentIds.has(dependency)) {
         throw new Error(
-          `plugin "${row.id}" requires "${dependency}"; disable "${row.id}" too or re-enable "${dependency}"`,
-        );
+          `plugin "${row.id}" requires "${dependency}"; disable "${row.id}" too or re-enable "${dependency}"`
+        )
       }
     }
   }
-  const effectiveConfig = (
-    row: PluginRow,
-  ): Record<string, unknown> | undefined => {
-    const override = overrides.config?.[row.id];
-    if (override === undefined) return row.config;
-    return { ...row.config, ...override };
-  };
+  const effectiveConfig = (row: PluginRow): Record<string, unknown> | undefined => {
+    const override = overrides.config?.[row.id]
+    if (override === undefined) return row.config
+    return { ...row.config, ...override }
+  }
   return {
-    mounted: rows
-      .filter((row) => !disabled.has(row.id))
-      .map((row) => ({ row, config: effectiveConfig(row) })),
+    mounted: rows.filter((row) => !disabled.has(row.id)).map((row) => ({ row, config: effectiveConfig(row) })),
     listing: rows.map((row) => ({
       id: row.id,
       package: row.package,
@@ -951,7 +862,7 @@ export function resolvePlugins(
       config: effectiveConfig(row),
       defaultConfig: row.config,
       overrideConfig: overrides.config?.[row.id],
-      configurable: row.configurable,
-    })),
-  };
+      configurable: row.configurable
+    }))
+  }
 }

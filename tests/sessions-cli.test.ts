@@ -4,8 +4,9 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { makeHarness, textResponse, untilFrame } from "./harness.ts"
+
 import { runSessionsCli } from "../src/sessions-cli.ts"
+import { makeHarness, textResponse, untilFrame } from "./harness.ts"
 
 function captureStdout(): { lines: string[]; restore: () => void } {
   const lines: string[] = []
@@ -14,7 +15,12 @@ function captureStdout(): { lines: string[]; restore: () => void } {
     lines.push(chunk.toString())
     return true
   }) as typeof process.stdout.write
-  return { lines, restore: () => { process.stdout.write = original } }
+  return {
+    lines,
+    restore: () => {
+      process.stdout.write = original
+    }
+  }
 }
 
 describe("sessions CLI", () => {
@@ -30,9 +36,11 @@ describe("sessions CLI", () => {
     const stdout = captureStdout()
     try {
       await runSessionsCli(["list", "--root", root])
-      const listed = JSON.parse(stdout.lines.at(-1)!) as { sessions: Array<{ id: string; cwd?: string; createdAt: number }> }
-      expect(listed.sessions.map(session => session.id)).toContain(sessionId)
-      expect(listed.sessions.find(session => session.id === sessionId)?.cwd).toBe("/tmp")
+      const listed = JSON.parse(stdout.lines.at(-1)!) as {
+        sessions: Array<{ id: string; cwd?: string; createdAt: number }>
+      }
+      expect(listed.sessions.map((session) => session.id)).toContain(sessionId)
+      expect(listed.sessions.find((session) => session.id === sessionId)?.cwd).toBe("/tmp")
 
       await runSessionsCli(["show", sessionId, "--root", root])
       const shown = JSON.parse(stdout.lines.at(-1)!) as { meta: { id: string }; events: Array<{ type?: string }> }

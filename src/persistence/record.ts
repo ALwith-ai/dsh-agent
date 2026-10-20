@@ -19,10 +19,11 @@
  * model that produced them); an image block without a mounted attachment store is an error.
  */
 import { createHash, randomUUID } from "node:crypto"
-import { SESSION_FORMAT_VERSION, SessionSeq } from "@deepseek-ai/dsh-session"
-import type { SessionEvent, SessionEventType, SessionHeader, SessionId } from "@deepseek-ai/dsh-session"
+
 import { MessageId, ToolCallId } from "@deepseek-ai/dsh-llm"
 import type { ContentBlock } from "@deepseek-ai/dsh-llm"
+import { SESSION_FORMAT_VERSION, SessionSeq } from "@deepseek-ai/dsh-session"
+import type { SessionEvent, SessionEventType, SessionHeader, SessionId } from "@deepseek-ai/dsh-session"
 
 export const RECORD_VERSION = 1
 export const ENGINE = "dsh"
@@ -105,14 +106,19 @@ function alwithLine(kind: string, fields: Record<string, unknown>): string {
   return JSON.stringify({ type: "alwith", kind, ...fields })
 }
 
-export function headerLine(context: EncodeContext, createdAt: number, writer: RecordWriter, dsh: DshHeaderBlock): string {
+export function headerLine(
+  context: EncodeContext,
+  createdAt: number,
+  writer: RecordWriter,
+  dsh: DshHeaderBlock
+): string {
   return alwithLine("header", {
     version: RECORD_VERSION,
     recordId: context.recordId,
     ...(context.cwd === undefined ? {} : { cwd: context.cwd }),
     createdAt: isoTime(createdAt),
     writer: { engine: ENGINE, ...writer },
-    dsh,
+    dsh
   })
 }
 
@@ -128,7 +134,9 @@ function blockText(block: ContentBlock): string | undefined {
     case "image":
       // Only a mounted AttachmentStore can put an image into a dsh session; the record must then carry
       // the bytes (Claude Code `image` block), not a paraphrase. No store is mounted in this composition.
-      throw new Error(`image attachment ${block.attachment.attachmentId} cannot be recorded: no attachment store is mounted`)
+      throw new Error(
+        `image attachment ${block.attachment.attachmentId} cannot be recorded: no attachment store is mounted`
+      )
     case "file":
       throw new Error("file content cannot be recorded: no attachment store is mounted")
     case "reasoning":
@@ -154,7 +162,7 @@ function claudeMessageLine(
   content: string | ClaudeBlock[],
   time: number,
   extra: Record<string, unknown>,
-  alwith: Record<string, unknown>,
+  alwith: Record<string, unknown>
 ): string {
   const uuid = randomUUID()
   const line = JSON.stringify({
@@ -167,20 +175,37 @@ function claudeMessageLine(
     message: { role, ...extra, content },
     uuid,
     timestamp: isoTime(time),
-    alwith: { engine: ENGINE, providerId: context.providerId, ...alwith },
+    alwith: { engine: ENGINE, providerId: context.providerId, ...alwith }
   })
   state.lastUuid = uuid
   return line
 }
 
-function projectUserMessage(context: EncodeContext, state: EncodeState, event: SessionEvent<"user/message">): string | undefined {
-  if (event.data.id === undefined || event.data.source?.kind !== "user" || !Array.isArray(event.data.content)) return undefined
+function projectUserMessage(
+  context: EncodeContext,
+  state: EncodeState,
+  event: SessionEvent<"user/message">
+): string | undefined {
+  if (event.data.id === undefined || event.data.source?.kind !== "user" || !Array.isArray(event.data.content))
+    return undefined
   const texts = event.data.content.map(blockText).filter((text): text is string => text !== undefined)
   if (texts.length === 0) return undefined
-  return claudeMessageLine(context, state, "user", texts.join("\n"), event.time, {}, { seq: event.seq, messageId: event.data.id })
+  return claudeMessageLine(
+    context,
+    state,
+    "user",
+    texts.join("\n"),
+    event.time,
+    {},
+    { seq: event.seq, messageId: event.data.id }
+  )
 }
 
-function projectAssistantMessage(context: EncodeContext, state: EncodeState, event: SessionEvent<"assistant/message">): string | undefined {
+function projectAssistantMessage(
+  context: EncodeContext,
+  state: EncodeState,
+  event: SessionEvent<"assistant/message">
+): string | undefined {
   // Pre-identity logs carry `content` + `provenance` on the event itself; the coordinator migrates
   // them on load, and the verbatim event line is what a reload reads. No projection for those.
   if (event.data.message?.content === undefined || event.data.message.source === undefined) return undefined
@@ -195,7 +220,7 @@ function projectAssistantMessage(context: EncodeContext, state: EncodeState, eve
   }
   if (blocks.length === 0) return undefined
   const usage = event.data.usage
-  const hasToolUse = blocks.some(block => block.type === "tool_use")
+  const hasToolUse = blocks.some((block) => block.type === "tool_use")
   return claudeMessageLine(
     context,
     state,
@@ -214,22 +239,29 @@ function projectAssistantMessage(context: EncodeContext, state: EncodeState, eve
               input_tokens: usage.inputTokens,
               output_tokens: usage.outputTokens,
               ...(usage.cacheReadTokens === undefined ? {} : { cache_read_input_tokens: usage.cacheReadTokens }),
-              ...(usage.cacheWriteTokens === undefined ? {} : { cache_creation_input_tokens: usage.cacheWriteTokens }),
-            },
-          }),
+              ...(usage.cacheWriteTokens === undefined ? {} : { cache_creation_input_tokens: usage.cacheWriteTokens })
+            }
+          })
     },
     {
       seq: event.seq,
       messageId: event.data.message.id,
       provider: event.data.message.source.provider,
-      ...(event.data.interrupted === true ? { interrupted: true } : {}),
-    },
+      ...(event.data.interrupted === true ? { interrupted: true } : {})
+    }
   )
 }
 
-function projectToolResult(context: EncodeContext, state: EncodeState, event: SessionEvent<"tool/result">): string | undefined {
+function projectToolResult(
+  context: EncodeContext,
+  state: EncodeState,
+  event: SessionEvent<"tool/result">
+): string | undefined {
   const block = event.data.message
-  const text = block.content.map(blockText).filter((part): part is string => part !== undefined).join("\n")
+  const text = block.content
+    .map(blockText)
+    .filter((part): part is string => part !== undefined)
+    .join("\n")
   return claudeMessageLine(
     context,
     state,
@@ -237,11 +269,19 @@ function projectToolResult(context: EncodeContext, state: EncodeState, event: Se
     [{ type: "tool_result", tool_use_id: block.toolCallId, content: text, is_error: block.isError === true }],
     event.time,
     {},
-    { seq: event.seq, messageId: event.data.message.id, ...(event.data.error === undefined ? {} : { error: event.data.error }) },
+    {
+      seq: event.seq,
+      messageId: event.data.message.id,
+      ...(event.data.error === undefined ? {} : { error: event.data.error })
+    }
   )
 }
 
-function projectRequestHeader(context: EncodeContext, state: EncodeState, event: SessionEvent<"request/header">): string[] {
+function projectRequestHeader(
+  context: EncodeContext,
+  state: EncodeState,
+  event: SessionEvent<"request/header">
+): string[] {
   const lines: string[] = []
   const { header } = event.data
   const snapshot = (content: unknown): { ref: string } => {
@@ -265,14 +305,17 @@ function projectRequestHeader(context: EncodeContext, state: EncodeState, event:
       ...(header.config.reasoningEffort === undefined ? {} : { reasoningEffort: header.config.reasoningEffort }),
       reason: event.data.reason,
       systemPrompt,
-      tools,
-    }),
+      tools
+    })
   )
   return lines
 }
 
 function projectSystemMessage(state: EncodeState, event: SessionEvent<"system/message">): string | undefined {
-  const text = event.data.message.content.map(blockText).filter((part): part is string => part !== undefined).join("\n")
+  const text = event.data.message.content
+    .map(blockText)
+    .filter((part): part is string => part !== undefined)
+    .join("\n")
   const ref = sha256(text)
   state.systemPromptRef = ref
   if (state.snapshotRefs.has(ref)) return undefined
@@ -390,7 +433,11 @@ function toolResultText(content: unknown): string {
   if (typeof content === "string") return content
   if (Array.isArray(content)) {
     return content
-      .map(block => (typeof block === "object" && block !== null && (block as { type?: unknown }).type === "text" ? String((block as { text?: unknown }).text ?? "") : JSON.stringify(block)))
+      .map((block) =>
+        typeof block === "object" && block !== null && (block as { type?: unknown }).type === "text"
+          ? String((block as { text?: unknown }).text ?? "")
+          : JSON.stringify(block)
+      )
       .join("\n")
   }
   if (content === undefined || content === null) return ""
@@ -470,7 +517,9 @@ class Reconstruction {
     const content = line.message?.content
     if (content === undefined || content === null) return
     const blocks = typeof content === "string" ? [{ type: "text", text: content } as ClaudeContentBlock] : content
-    const results = blocks.filter((block): block is Extract<ClaudeContentBlock, { type: "tool_result" }> => block.type === "tool_result")
+    const results = blocks.filter(
+      (block): block is Extract<ClaudeContentBlock, { type: "tool_result" }> => block.type === "tool_result"
+    )
     if (results.length > 0) {
       if (!this.stepOpen) return
       for (const result of results) {
@@ -488,10 +537,10 @@ class Reconstruction {
               toolCallId: ToolCallId(result.tool_use_id),
               isError: result.is_error === true,
               content: [{ type: "text", text }],
-              source: { kind: "tool", callId: ToolCallId(result.tool_use_id) },
-            },
+              source: { kind: "tool", callId: ToolCallId(result.tool_use_id) }
+            }
           },
-          surfaceOp: "append",
+          surfaceOp: "append"
         })
       }
       // The next assistant message answers these results in a fresh step.
@@ -501,7 +550,8 @@ class Reconstruction {
     const texts: string[] = []
     for (const block of blocks) {
       if (block.type === "text") texts.push((block as { text: string }).text)
-      else if (block.type === "image") texts.push(`[image ${(block as { source: { media_type?: string } }).source.media_type ?? "image"}]`)
+      else if (block.type === "image")
+        texts.push(`[image ${(block as { source: { media_type?: string } }).source.media_type ?? "image"}]`)
     }
     const text = texts.join("\n")
     if (text.trim().length === 0) return
@@ -513,8 +563,13 @@ class Reconstruction {
     this.push({
       type: "user/message",
       time,
-      data: { id: MessageId(line.uuid ?? randomUUID()), role: "user", content: [{ type: "text", text }], source: { kind: "user" } },
-      surfaceOp: "append",
+      data: {
+        id: MessageId(line.uuid ?? randomUUID()),
+        role: "user",
+        content: [{ type: "text", text }],
+        source: { kind: "user" }
+      },
+      surfaceOp: "append"
     })
   }
 
@@ -549,15 +604,29 @@ class Reconstruction {
           id: MessageId(line.uuid ?? randomUUID()),
           role: "assistant",
           content: message,
-          source: { kind: "model", provider: line.alwith?.providerId ?? "alwith", model: line.message?.model ?? "unknown" },
+          source: {
+            kind: "model",
+            provider: line.alwith?.providerId ?? "alwith",
+            model: line.message?.model ?? "unknown"
+          }
         },
-        stream: [],
+        stream: []
       },
-      surfaceOp: "append",
+      surfaceOp: "append"
     })
     for (const call of calls) {
       this.pendingCalls += 1
-      this.push({ type: "tool/call", time, data: { turn: this.turn, step: this.step, callId: ToolCallId(call.id), name: call.name, arguments: call.arguments } })
+      this.push({
+        type: "tool/call",
+        time,
+        data: {
+          turn: this.turn,
+          step: this.step,
+          callId: ToolCallId(call.id),
+          name: call.name,
+          arguments: call.arguments
+        }
+      })
     }
   }
 }
@@ -583,12 +652,23 @@ function upgradeStoredEvent(event: SessionEvent): SessionEvent | undefined {
   return event
 }
 
-function headerFromLines(recordId: SessionId, lines: readonly RecordLine[], fallbackCwd: string | undefined): SessionHeader {
-  const cwd = lines.find(line => typeof line.cwd === "string")?.cwd ?? fallbackCwd
-  const stamp = lines.find(line => line.timestamp !== undefined)?.timestamp
+function headerFromLines(
+  recordId: SessionId,
+  lines: readonly RecordLine[],
+  fallbackCwd: string | undefined
+): SessionHeader {
+  const cwd = lines.find((line) => typeof line.cwd === "string")?.cwd ?? fallbackCwd
+  const stamp = lines.find((line) => line.timestamp !== undefined)?.timestamp
   const createdAt = stamp === undefined ? Number.NaN : Date.parse(stamp)
-  if (Number.isNaN(createdAt)) throw new Error(`ALwith record ${recordId} has no usable timestamp to derive its creation time`)
-  return { version: SESSION_FORMAT_VERSION, id: recordId, createdAt, ...(cwd === undefined ? {} : { cwd }), isSeeded: false }
+  if (Number.isNaN(createdAt))
+    throw new Error(`ALwith record ${recordId} has no usable timestamp to derive its creation time`)
+  return {
+    version: SESSION_FORMAT_VERSION,
+    id: recordId,
+    createdAt,
+    ...(cwd === undefined ? {} : { cwd }),
+    isSeeded: false
+  }
 }
 
 /**
@@ -614,7 +694,9 @@ export function decodeRecord(buffer: Buffer, recordId: SessionId, fallbackCwd?: 
 
   // Message-layer identity: the last version of a uuid wins, in its first position.
   const sent = new Set<string>()
-  for (const line of lines) if (line.type === "acpDelivery" && line.status === "sent" && line.messageUuid !== undefined) sent.add(line.messageUuid)
+  for (const line of lines)
+    if (line.type === "acpDelivery" && line.status === "sent" && line.messageUuid !== undefined)
+      sent.add(line.messageUuid)
   const ordered: RecordLine[] = []
   const positions = new Map<string, number>()
   for (const line of lines) {
@@ -692,8 +774,8 @@ export function decodeRecord(buffer: Buffer, recordId: SessionId, fallbackCwd?: 
     const event = { ...entry.event, seq: SessionSeq(index) } as SessionEvent
     const refs = (event as { sourceEventSeqs?: number[] }).sourceEventSeqs
     if (refs !== undefined) {
-      const mapped = refs.map(seq => remap.get(seq)).filter((seq): seq is number => seq !== undefined)
-      ;(event as { sourceEventSeqs?: unknown }).sourceEventSeqs = mapped.map(seq => SessionSeq(seq))
+      const mapped = refs.map((seq) => remap.get(seq)).filter((seq): seq is number => seq !== undefined)
+      ;(event as { sourceEventSeqs?: unknown }).sourceEventSeqs = mapped.map((seq) => SessionSeq(seq))
     }
     return event
   })

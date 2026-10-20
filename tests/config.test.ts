@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+
 import { makeHarness, textResponse, untilFrame } from "./harness.ts"
 
 type ModelOption = {
@@ -16,7 +17,7 @@ type ModelOption = {
 
 function modelOption(configOptions: unknown): ModelOption {
   const options = configOptions as ModelOption[]
-  const entry = options.find(option => option.category === "model")
+  const entry = options.find((option) => option.category === "model")
   if (entry === undefined) throw new Error("no model config option downlinked")
   return entry
 }
@@ -24,21 +25,31 @@ function modelOption(configOptions: unknown): ModelOption {
 describe("session config options", () => {
   test("usage reports the selected model's context window after switching", async () => {
     const h = await makeHarness([textResponse("before"), textResponse("after")], {
-      sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-usage-")),
+      sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-usage-"))
     })
-    h.adapter.resolveModel = (provider, model) => Promise.resolve({
-      provider, id: model, name: model,
-      context: { contextWindow: model === "mock" ? 8192 : 32768 },
-    })
+    h.adapter.resolveModel = (provider, model) =>
+      Promise.resolve({
+        provider,
+        id: model,
+        name: model,
+        context: { contextWindow: model === "mock" ? 8192 : 32768 }
+      })
     try {
       await h.initialize()
       const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
-      await h.promptAndWait( { sessionId, prompt: [{ type: "text", text: "one" }] })
-      await untilFrame(() => h.updates.some(update => update.sessionUpdate === "usage_update"))
-      await h.agent.request("session/set_config_option", { sessionId, configId: "model", type: "id", value: "mock-pro" })
-      await h.promptAndWait( { sessionId, prompt: [{ type: "text", text: "two" }] })
-      await untilFrame(() => h.updates.filter(update => update.sessionUpdate === "usage_update").length === 2)
-      expect(h.updates.flatMap(update => update.sessionUpdate === "usage_update" ? [update.size] : [])).toEqual([8192, 32768])
+      await h.promptAndWait({ sessionId, prompt: [{ type: "text", text: "one" }] })
+      await untilFrame(() => h.updates.some((update) => update.sessionUpdate === "usage_update"))
+      await h.agent.request("session/set_config_option", {
+        sessionId,
+        configId: "model",
+        type: "id",
+        value: "mock-pro"
+      })
+      await h.promptAndWait({ sessionId, prompt: [{ type: "text", text: "two" }] })
+      await untilFrame(() => h.updates.filter((update) => update.sessionUpdate === "usage_update").length === 2)
+      expect(h.updates.flatMap((update) => (update.sessionUpdate === "usage_update" ? [update.size] : []))).toEqual([
+        8192, 32768
+      ])
     } finally {
       await h.dispose()
     }
@@ -51,32 +62,32 @@ describe("session config options", () => {
     const entry = modelOption(response.configOptions)
     expect(entry.type).toBe("select")
     expect(entry.currentValue).toBe("mock")
-    expect(entry.options.map(option => option.value)).toEqual(["mock", "mock-pro"])
+    expect(entry.options.map((option) => option.value)).toEqual(["mock", "mock-pro"])
     await h.dispose()
   })
 
   test("set_config_option(model) switches the live session; the next request runs on the new model", async () => {
     const h = await makeHarness([textResponse("before"), textResponse("after")], {
-      sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-config-")),
+      sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-config-"))
     })
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
-    await h.promptAndWait( { sessionId, prompt: [{ type: "text", text: "one" }] })
-    await untilFrame(() => h.states().filter(entry => entry.state === "idle").length >= 1)
+    await h.promptAndWait({ sessionId, prompt: [{ type: "text", text: "one" }] })
+    await untilFrame(() => h.states().filter((entry) => entry.state === "idle").length >= 1)
 
     // Schema shape: a select option is set with `type: "id"` (ALwith Desktop sends exactly this).
     const switched = await h.agent.request("session/set_config_option", {
       sessionId,
       configId: "model",
       type: "id",
-      value: "mock-pro",
+      value: "mock-pro"
     })
     expect(modelOption(switched.configOptions).currentValue).toBe("mock-pro")
-    const echo = h.updates.filter(update => update.sessionUpdate === "config_option_update")
+    const echo = h.updates.filter((update) => update.sessionUpdate === "config_option_update")
     expect(echo.length).toBe(1)
 
-    await h.promptAndWait( { sessionId, prompt: [{ type: "text", text: "two" }] })
-    await untilFrame(() => h.states().filter(entry => entry.state === "idle").length >= 2)
+    await h.promptAndWait({ sessionId, prompt: [{ type: "text", text: "two" }] })
+    await untilFrame(() => h.states().filter((entry) => entry.state === "idle").length >= 2)
     // The switched agent derives history from the same log and runs on the new model.
     const last = h.adapter.requests.at(-1) as { model?: string } | undefined
     expect(last?.model).toBe("mock-pro")
@@ -89,7 +100,7 @@ describe("session config options", () => {
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
     await expect(
-      h.agent.request("session/set_config_option", { sessionId, configId: "mode", type: "id", value: "x" }),
+      h.agent.request("session/set_config_option", { sessionId, configId: "mode", type: "id", value: "x" })
     ).rejects.toThrow()
     await h.dispose()
   })

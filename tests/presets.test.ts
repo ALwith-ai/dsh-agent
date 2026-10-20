@@ -1,15 +1,17 @@
 /** Preset compositions: each preset yields exactly its documented tool surface. */
 
 import { describe, expect, test } from "bun:test"
+
 import BasicCompactionEngine from "@deepseek-ai/dsh-compaction-basic"
 import SubagentRuntime from "@deepseek-ai/dsh-subagent"
+
 import { composeRuntime } from "../src/compose.ts"
 
 async function toolNames(preset: "standard" | "minimal"): Promise<string[]> {
   const ctx = await composeRuntime({ preset })
   const names = (ctx.tools as unknown as { schemas: (c: unknown) => Array<{ name: string }> })
     .schemas(ctx)
-    .map(schema => schema.name)
+    .map((schema) => schema.name)
     .sort()
   await ctx.fiber.dispose()
   return names
@@ -30,7 +32,7 @@ describe("harness presets", () => {
       "subagent_fork",
       "todo_write",
       "web_search",
-      "write",
+      "write"
     ])
   })
 

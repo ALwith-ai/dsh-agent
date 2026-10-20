@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+
 import { makeHarness, textResponse, untilFrame } from "./harness.ts"
 
 function tempRoot(): string {
@@ -12,8 +13,8 @@ function tempRoot(): string {
 
 function chunkText(h: Awaited<ReturnType<typeof makeHarness>>, kind: string): string {
   return h.updates
-    .filter(update => update.sessionUpdate === kind)
-    .map(update => (update as { content: { text: string } }).content.text)
+    .filter((update) => update.sessionUpdate === kind)
+    .map((update) => (update as { content: { text: string } }).content.text)
     .join("")
 }
 
@@ -30,7 +31,7 @@ describe("session/resume", () => {
       await h.initialize()
       const results = await Promise.allSettled([
         h.agent.request("session/resume", { sessionId, cwd: "/tmp" }),
-        h.agent.request("session/resume", { sessionId, cwd: "/private" }),
+        h.agent.request("session/resume", { sessionId, cwd: "/private" })
       ])
       expect(results[0]?.status).toBe("fulfilled")
       expect(results[1]?.status).toBe("rejected")
@@ -78,7 +79,10 @@ describe("session/resume", () => {
     const h1 = await makeHarness([textResponse("partial answer")], { sessionsRoot: root })
     await h1.initialize()
     const { sessionId } = await h1.agent.request("session/new", { cwd: "/tmp" })
-    const prompt = h1.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "interrupted question" }] })
+    const prompt = h1.agent.request("session/prompt", {
+      sessionId,
+      prompt: [{ type: "text", text: "interrupted question" }]
+    })
     await h1.agent.notify("session/cancel", { sessionId })
     await prompt
     await untilFrame(() => h1.states().at(-1)?.state === "idle")
@@ -99,9 +103,7 @@ describe("session/resume", () => {
   test("resume of an unknown session is invalid params", async () => {
     const h = await makeHarness([], { sessionsRoot: tempRoot() })
     await h.initialize()
-    await expect(
-      h.agent.request("session/resume", { sessionId: "no-such-session", cwd: "/tmp" }),
-    ).rejects.toThrow()
+    await expect(h.agent.request("session/resume", { sessionId: "no-such-session", cwd: "/tmp" })).rejects.toThrow()
     await h.dispose()
   })
 
@@ -134,7 +136,7 @@ describe("session/resume", () => {
 
     // The reused agent keeps working.
     await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "second" }] })
-    await untilFrame(() => h.states().filter(entry => entry.state === "idle").length >= 2)
+    await untilFrame(() => h.states().filter((entry) => entry.state === "idle").length >= 2)
     expect(chunkText(h, "agent_message_chunk")).toContain("two")
     await h.dispose()
   })

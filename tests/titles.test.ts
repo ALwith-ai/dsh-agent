@@ -1,12 +1,13 @@
 /** Background LLM session titles: one short generate after the first turn upgrades the deterministic title. */
 
 import { describe, expect, test } from "bun:test"
+
 import { makeHarness, textResponse, untilFrame } from "./harness.ts"
 
 function titles(h: Awaited<ReturnType<typeof makeHarness>>): Array<string | undefined> {
   return h.updates
-    .filter(update => update.sessionUpdate === "session_info_update")
-    .map(update => (update as { title?: string }).title)
+    .filter((update) => update.sessionUpdate === "session_info_update")
+    .map((update) => (update as { title?: string }).title)
 }
 
 describe("llm session titles", () => {
@@ -20,8 +21,11 @@ describe("llm session titles", () => {
         return
       }
       started.resolve()
-      await new Promise<void>(resolve => {
-        const onAbort = () => { aborted = true; resolve() }
+      await new Promise<void>((resolve) => {
+        const onAbort = () => {
+          aborted = true
+          resolve()
+        }
         if (options.signal?.aborted) onAbort()
         else options.signal?.addEventListener("abort", onAbort, { once: true })
       })
@@ -40,7 +44,9 @@ describe("llm session titles", () => {
   })
 
   test("first turn upgrades the deterministic title; the title call targets the title model", async () => {
-    const h = await makeHarness([textResponse("hello"), textResponse('"Greeting Session."')], { titleModel: "mock-pro" })
+    const h = await makeHarness([textResponse("hello"), textResponse('"Greeting Session."')], {
+      titleModel: "mock-pro"
+    })
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
     await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "hi there friend" }] })
@@ -50,20 +56,22 @@ describe("llm session titles", () => {
     const titleRequest = h.adapter.requests[1]
     expect(titleRequest?.model).toBe("mock-pro")
     expect(titleRequest?.maxTokens).toBe(128)
-    expect(titleRequest?.messages.map(message => message.content)).toEqual([[{ type: "text", text: "hi there friend" }]])
+    expect(titleRequest?.messages.map((message) => message.content)).toEqual([
+      [{ type: "text", text: "hi there friend" }]
+    ])
     await h.dispose()
   })
 
   test("only the first turn titles: the second prompt does not regenerate", async () => {
     const h = await makeHarness([textResponse("a"), textResponse("First Title"), textResponse("b")], {
-      titleModel: "mock",
+      titleModel: "mock"
     })
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
     await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "one" }] })
     await untilFrame(() => titles(h).length >= 2)
     await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "two" }] })
-    await untilFrame(() => h.states().filter(entry => entry.state === "idle").length >= 2)
+    await untilFrame(() => h.states().filter((entry) => entry.state === "idle").length >= 2)
     expect(titles(h)).toEqual(["one", "First Title"])
     await h.dispose()
   })
@@ -75,10 +83,10 @@ describe("llm session titles", () => {
         [
           { type: "block-start", index: 0, blockType: "text" },
           { type: "text-delta", index: 0, text: "Trimmed Title" },
-          { type: "finish", reason: { kind: "max-tokens" } },
-        ],
+          { type: "finish", reason: { kind: "max-tokens" } }
+        ]
       ],
-      { titleModel: "mock" },
+      { titleModel: "mock" }
     )
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })

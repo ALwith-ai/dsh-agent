@@ -16,6 +16,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs"
 import { isAbsolute, join, relative, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
+
 import { Context, Service } from "@deepseek-ai/cordis"
 import BasicCompactionEngine from "@deepseek-ai/dsh-compaction-basic"
 
@@ -89,38 +90,51 @@ export function loadPresetPackage(dir: string): PresetPackage {
   } catch (error) {
     fail(root, `${PRESET_MANIFEST} is not valid JSON: ${String(error)}`)
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) fail(root, `${PRESET_MANIFEST} must be a JSON object`)
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+    fail(root, `${PRESET_MANIFEST} must be a JSON object`)
   const manifest = parsed as Record<string, unknown>
   if (manifest.schemaVersion !== 1) fail(root, `schemaVersion must be 1, got ${JSON.stringify(manifest.schemaVersion)}`)
   if (typeof manifest.name !== "string" || !ID_PATTERN.test(manifest.name)) fail(root, `name must match ${ID_PATTERN}`)
   if (typeof manifest.extends !== "string" || !(BUILT_IN as readonly string[]).includes(manifest.extends)) {
     fail(root, `extends must be one of ${BUILT_IN.join(", ")}`)
   }
-  if (manifest.personaPrefix !== undefined && typeof manifest.personaPrefix !== "string") fail(root, "personaPrefix must be a string")
+  if (manifest.personaPrefix !== undefined && typeof manifest.personaPrefix !== "string")
+    fail(root, "personaPrefix must be a string")
   let skillsDir: string | undefined
   if (manifest.skillsDir !== undefined) {
     if (typeof manifest.skillsDir !== "string") fail(root, "skillsDir must be a string")
     skillsDir = resolve(root, manifest.skillsDir)
-    if (!insidePackage(root, skillsDir) && skillsDir !== root) fail(root, `skillsDir must stay inside the package: ${manifest.skillsDir}`)
-    if (!existsSync(skillsDir) || !statSync(skillsDir).isDirectory()) fail(root, `skillsDir not found: ${manifest.skillsDir}`)
+    if (!insidePackage(root, skillsDir) && skillsDir !== root)
+      fail(root, `skillsDir must stay inside the package: ${manifest.skillsDir}`)
+    if (!existsSync(skillsDir) || !statSync(skillsDir).isDirectory())
+      fail(root, `skillsDir not found: ${manifest.skillsDir}`)
   }
   if (!Array.isArray(manifest.plugins)) fail(root, "plugins must be an array")
   const ids = new Set<string>()
   const plugins: PresetPluginSpec[] = manifest.plugins.map((raw, index) => {
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) fail(root, `plugins[${index}] must be an object`)
     const spec = raw as Record<string, unknown>
-    if (typeof spec.id !== "string" || !ID_PATTERN.test(spec.id)) fail(root, `plugins[${index}].id must match ${ID_PATTERN}`)
+    if (typeof spec.id !== "string" || !ID_PATTERN.test(spec.id))
+      fail(root, `plugins[${index}].id must match ${ID_PATTERN}`)
     if (ids.has(spec.id)) fail(root, `duplicate plugin id "${spec.id}"`)
     ids.add(spec.id)
     if (typeof spec.module !== "string") fail(root, `plugins[${index}].module must be a path`)
     const modulePath = resolve(root, spec.module)
-    if (!insidePackage(root, modulePath)) fail(root, `plugins[${index}].module must stay inside the package: ${spec.module}`)
+    if (!insidePackage(root, modulePath))
+      fail(root, `plugins[${index}].module must stay inside the package: ${spec.module}`)
     if (!existsSync(modulePath)) fail(root, `plugins[${index}].module not found: ${spec.module}`)
-    if (spec.description !== undefined && typeof spec.description !== "string") fail(root, `plugins[${index}].description must be a string`)
-    if (spec.config !== undefined && (typeof spec.config !== "object" || spec.config === null || Array.isArray(spec.config))) {
+    if (spec.description !== undefined && typeof spec.description !== "string")
+      fail(root, `plugins[${index}].description must be a string`)
+    if (
+      spec.config !== undefined &&
+      (typeof spec.config !== "object" || spec.config === null || Array.isArray(spec.config))
+    ) {
       fail(root, `plugins[${index}].config must be an object`)
     }
-    if (spec.requires !== undefined && !(Array.isArray(spec.requires) && spec.requires.every(id => typeof id === "string"))) {
+    if (
+      spec.requires !== undefined &&
+      !(Array.isArray(spec.requires) && spec.requires.every((id) => typeof id === "string"))
+    ) {
       fail(root, `plugins[${index}].requires must be an array of ids`)
     }
     return {
@@ -128,10 +142,13 @@ export function loadPresetPackage(dir: string): PresetPackage {
       module: spec.module,
       ...(spec.description === undefined ? {} : { description: spec.description }),
       ...(spec.config === undefined ? {} : { config: spec.config as Record<string, unknown> }),
-      ...(spec.requires === undefined ? {} : { requires: spec.requires as string[] }),
+      ...(spec.requires === undefined ? {} : { requires: spec.requires as string[] })
     }
   })
-  if (manifest.disabled !== undefined && !(Array.isArray(manifest.disabled) && manifest.disabled.every(id => typeof id === "string"))) {
+  if (
+    manifest.disabled !== undefined &&
+    !(Array.isArray(manifest.disabled) && manifest.disabled.every((id) => typeof id === "string"))
+  ) {
     fail(root, "disabled must be an array of ids")
   }
   return {
@@ -143,8 +160,8 @@ export function loadPresetPackage(dir: string): PresetPackage {
       ...(manifest.personaPrefix === undefined ? {} : { personaPrefix: manifest.personaPrefix }),
       ...(skillsDir === undefined ? {} : { skillsDir }),
       plugins,
-      ...(manifest.disabled === undefined ? {} : { disabled: manifest.disabled as string[] }),
-    },
+      ...(manifest.disabled === undefined ? {} : { disabled: manifest.disabled as string[] })
+    }
   }
 }
 
@@ -158,11 +175,15 @@ export async function loadPresetPlugin(pkg: PresetPackage, spec: PresetPluginSpe
   const imported = (await import(pathToFileURL(modulePath).href)) as { default?: unknown }
   const factory = imported.default
   if (typeof factory !== "function") {
-    throw new Error(`preset package ${pkg.dir}: plugin "${spec.id}" (${spec.module}) must default-export a factory (host) => plugin`)
+    throw new Error(
+      `preset package ${pkg.dir}: plugin "${spec.id}" (${spec.module}) must default-export a factory (host) => plugin`
+    )
   }
   const plugin = (factory as PresetPluginFactory)(presetHost(pkg.dir))
   if (typeof plugin !== "object" && typeof plugin !== "function") {
-    throw new Error(`preset package ${pkg.dir}: plugin "${spec.id}" factory returned ${typeof plugin}, expected a cordis plugin`)
+    throw new Error(
+      `preset package ${pkg.dir}: plugin "${spec.id}" factory returned ${typeof plugin}, expected a cordis plugin`
+    )
   }
   return plugin
 }

@@ -17,11 +17,12 @@
 
 import { homedir } from "node:os"
 import { join } from "node:path"
+
 import { Context } from "@deepseek-ai/cordis"
 import AuthorizationService, {
   type AuthorizationInteraction,
   type AuthorizationNotice,
-  type AuthorizationPrompt,
+  type AuthorizationPrompt
 } from "@deepseek-ai/dsh-authorization"
 import { credentialKey, credentialKeyId, credentialKeyScope } from "@deepseek-ai/dsh-credentials"
 import LocalCredentialProvider from "@deepseek-ai/dsh-credentials-local"
@@ -90,7 +91,7 @@ export function hostLoginInteraction(): AuthorizationInteraction {
           return
         }
         prompt.signal.addEventListener("abort", onAbort, { once: true })
-      }),
+      })
   }
 }
 
@@ -103,7 +104,10 @@ export async function runOauthCli(argv: string[]): Promise<void> {
       const stored = await ctx.credentials.listRecords()
       const credentials = stored
         .filter((entry) => credentialKeyScope(entry.key) === PI_AI_RECORD_SCOPE)
-        .map((entry) => ({ providerId: credentialKeyId(entry.key), type: entry.kind === "api-key" ? "api_key" : "oauth" }))
+        .map((entry) => ({
+          providerId: credentialKeyId(entry.key),
+          type: entry.kind === "api-key" ? "api_key" : "oauth"
+        }))
       emit({ type: "status", credentials })
       return
     }

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
-import { makeHarness, textResponse, untilFrame } from "./harness.ts"
+
 import { turnEndToStopReason } from "../src/codec.ts"
+import { makeHarness, textResponse, untilFrame } from "./harness.ts"
 
 test("cancel waits for durable convergence and an empty concurrent prompt cannot report idle", async () => {
   const h = await makeHarness([])
@@ -9,14 +10,14 @@ test("cancel waits for durable convergence and an empty concurrent prompt cannot
   const release = Promise.withResolvers<void>()
   h.adapter.stream = async function* (options) {
     started.resolve()
-    await new Promise<void>(resolve => {
+    await new Promise<void>((resolve) => {
       if (options.signal?.aborted) resolve()
       else options.signal?.addEventListener("abort", () => resolve(), { once: true })
     })
     throw new Error("aborted")
   }
-  const remove = h.ctx.on("session/flush", async session => {
-    if (!session.snapshotEvents().some(event => event.type === "turn/end")) return
+  const remove = h.ctx.on("session/flush", async (session) => {
+    if (!session.snapshotEvents().some((event) => event.type === "turn/end")) return
     checkpoint.resolve()
     await release.promise
   })
@@ -24,22 +25,29 @@ test("cancel waits for durable convergence and an empty concurrent prompt cannot
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
     let settled = false
-    const prompt = h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "wait" }] })
-      .then(() => { settled = true })
+    const prompt = h.agent
+      .request("session/prompt", { sessionId, prompt: [{ type: "text", text: "wait" }] })
+      .then(() => {
+        settled = true
+      })
     await started.promise
     await h.agent.request("session/prompt", { sessionId, prompt: [] })
-    expect(h.states().some(state => state.state === "idle")).toBe(false)
+    expect(h.states().some((state) => state.state === "idle")).toBe(false)
     await h.agent.notify("session/cancel", { sessionId })
     await checkpoint.promise
     expect(settled).toBe(true)
-    expect(h.states().some(state => state.state === "idle")).toBe(false)
-    await expect(h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "too soon" }] }))
-      .rejects.toMatchObject({ code: -32602 })
+    expect(h.states().some((state) => state.state === "idle")).toBe(false)
+    await expect(
+      h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "too soon" }] })
+    ).rejects.toMatchObject({ code: -32602 })
     release.resolve()
     await prompt
     await untilFrame(() => h.states().at(-1)?.state === "idle")
     expect(h.states().at(-1)?.stopReason).toBe("cancelled")
-    const end = h.ctx.agents.get(sessionId as never)!.session.snapshotEvents().find(event => event.type === "turn/end")
+    const end = h.ctx.agents
+      .get(sessionId as never)!
+      .session.snapshotEvents()
+      .find((event) => event.type === "turn/end")
     expect(end?.data).toMatchObject({ reason: { kind: "aborted", reason: { kind: "user" } } })
   } finally {
     release.resolve()
@@ -57,8 +65,8 @@ test("completed idle waits for the session durability checkpoint", async () => {
   const h = await makeHarness([textResponse("pong")])
   const checkpoint = Promise.withResolvers<void>()
   const release = Promise.withResolvers<void>()
-  const remove = h.ctx.on("session/flush", async session => {
-    if (!session.snapshotEvents().some(event => event.type === "turn/end")) return
+  const remove = h.ctx.on("session/flush", async (session) => {
+    if (!session.snapshotEvents().some((event) => event.type === "turn/end")) return
     checkpoint.resolve()
     await release.promise
   })
@@ -67,8 +75,8 @@ test("completed idle waits for the session durability checkpoint", async () => {
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
     const prompt = h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "ping" }] })
     await checkpoint.promise
-    await untilFrame(() => h.updates.some(update => update.sessionUpdate === "agent_message_chunk"))
-    expect(h.states().some(state => state.state === "idle")).toBe(false)
+    await untilFrame(() => h.updates.some((update) => update.sessionUpdate === "agent_message_chunk"))
+    expect(h.states().some((state) => state.state === "idle")).toBe(false)
     const receipt = await prompt
     expect(receipt.messageId).toBeString()
     release.resolve()
@@ -83,8 +91,8 @@ test("completed idle waits for the session durability checkpoint", async () => {
 
 test("a failed completion checkpoint preserves the insertion receipt and reports an error", async () => {
   const h = await makeHarness([textResponse("pong")])
-  const remove = h.ctx.on("session/flush", session => {
-    if (session.snapshotEvents().some(event => event.type === "turn/end")) {
+  const remove = h.ctx.on("session/flush", (session) => {
+    if (session.snapshotEvents().some((event) => event.type === "turn/end")) {
       throw new Error("disk full")
     }
   })
@@ -92,7 +100,8 @@ test("a failed completion checkpoint preserves the insertion receipt and reports
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
     const receipt = await h.agent.request("session/prompt", {
-      sessionId, prompt: [{ type: "text", text: "ping" }],
+      sessionId,
+      prompt: [{ type: "text", text: "ping" }]
     })
     expect(receipt.messageId).toBeString()
     await untilFrame(() => h.states().at(-1)?.state === "idle")
@@ -104,12 +113,17 @@ test("a failed completion checkpoint preserves the insertion receipt and reports
 })
 
 test("a model failure never reports a successful end_turn", async () => {
-  const h = await makeHarness([() => { throw new Error("model unavailable") }])
+  const h = await makeHarness([
+    () => {
+      throw new Error("model unavailable")
+    }
+  ])
   try {
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
     const receipt = await h.agent.request("session/prompt", {
-      sessionId, prompt: [{ type: "text", text: "ping" }],
+      sessionId,
+      prompt: [{ type: "text", text: "ping" }]
     })
     expect(receipt.messageId).toBeString()
     await untilFrame(() => h.states().at(-1)?.state === "idle")
@@ -119,10 +133,11 @@ test("a model failure never reports a successful end_turn", async () => {
   }
 })
 
-
 test("close releases its agent even when the final checkpoint fails", async () => {
   const h = await makeHarness([])
-  const remove = h.ctx.on("session/flush", () => { throw new Error("disk full") })
+  const remove = h.ctx.on("session/flush", () => {
+    throw new Error("disk full")
+  })
   try {
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
@@ -134,12 +149,10 @@ test("close releases its agent even when the final checkpoint fails", async () =
   }
 })
 
-
 test("a token limit retains max_tokens as the completion reason", async () => {
-  const h = await makeHarness([[
-    ...textResponse("partial").slice(0, -1),
-    { type: "finish", reason: { kind: "max-tokens" } },
-  ]])
+  const h = await makeHarness([
+    [...textResponse("partial").slice(0, -1), { type: "finish", reason: { kind: "max-tokens" } }]
+  ])
   try {
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })

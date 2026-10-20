@@ -7,14 +7,16 @@
 
 import { homedir } from "node:os"
 import { isAbsolute, join } from "node:path"
+
 import { credentialKey } from "@deepseek-ai/dsh-credentials"
+
 import packageJson from "../package.json" with { type: "json" }
+import * as Bridge from "./bridge.ts"
 import { composeRuntime } from "./compose.ts"
 import { defaultCredentialsFile } from "./oauth.ts"
+import { defaultPluginsFile, runPluginsCli } from "./plugins-cli.ts"
 import { loadPluginOverrides } from "./plugins.ts"
 import { loadPresetPackage } from "./preset-package.ts"
-import { defaultPluginsFile, runPluginsCli } from "./plugins-cli.ts"
-import * as Bridge from "./bridge.ts"
 
 // `plugins` / `sessions` subcommands: host-facing management without an ACP
 // server. Failures exit 1 with the reason as a single stderr line — the host
@@ -61,9 +63,7 @@ async function startServer(): Promise<void> {
   // that session's cwd; standalone runs default to the process cwd.
   const workspaceRoot = process.env.ALWITH_DSH_WORKSPACE_ROOT ?? process.cwd()
   const permissionMode = (process.env.ALWITH_DSH_PERMISSION_MODE ?? "workspace-write") as
-    | "read-only"
-    | "workspace-write"
-    | "danger-full-access"
+    "read-only" | "workspace-write" | "danger-full-access"
   // Preset gate fails loud on the modes this sidecar does not compose yet —
   // the host UI disables them, and a misrouted value must not silently degrade.
   const rawPreset = process.env.ALWITH_DSH_PRESET ?? "standard"
@@ -71,7 +71,9 @@ async function startServer(): Promise<void> {
   // An absolute path names a preset package (alwith-dsh-preset.json + its plugin modules).
   const preset = isAbsolute(rawPreset) ? loadPresetPackage(rawPreset) : (rawPreset as (typeof PRESETS)[number])
   if (typeof preset === "string" && !(PRESETS as readonly string[]).includes(preset)) {
-    throw new Error(`unsupported harness preset "${rawPreset}": this sidecar composes ${PRESETS.join(", ")} or an absolute preset package path`)
+    throw new Error(
+      `unsupported harness preset "${rawPreset}": this sidecar composes ${PRESETS.join(", ")} or an absolute preset package path`
+    )
   }
 
   // Per-plugin enable/disable + config; invalid content fails the spawn loud.
@@ -102,7 +104,7 @@ async function startServer(): Promise<void> {
     piProviders,
     // The credential plane rides with the pi-ai seat: subscription grants and
     // their refreshes live in the harness credential file, not in this process.
-    credentialsFile: piProviders === undefined ? undefined : defaultCredentialsFile(),
+    credentialsFile: piProviders === undefined ? undefined : defaultCredentialsFile()
   })
   // A route with no apiKeyEnv authenticates through a stored subscription
   // grant. Check it here, where the credential plane is the single source of
@@ -114,13 +116,15 @@ async function startServer(): Promise<void> {
     const record = await ctx.credentials.describeRecord(credentialKey("llm-pi-ai", route))
     if (!record.configured) {
       throw new Error(
-        `provider route "${route}" declares no API key and has no stored subscription credential: `
-        + "add an API key (Settings → Model providers) or sign in with a subscription (Settings → Harness)",
+        `provider route "${route}" declares no API key and has no stored subscription credential: ` +
+          "add an API key (Settings → Model providers) or sign in with a subscription (Settings → Harness)"
       )
     }
   }
-  await ctx.plugin(
-    { name: Bridge.name, inject: [...Bridge.inject], apply: (inner: typeof ctx) => Bridge.apply(inner, { provider, model, providerId, titleModel }) },
-  )
+  await ctx.plugin({
+    name: Bridge.name,
+    inject: [...Bridge.inject],
+    apply: (inner: typeof ctx) => Bridge.apply(inner, { provider, model, providerId, titleModel })
+  })
   // stdin keeps the process alive; the bridge's quiesce handles connection close.
 }

@@ -8,18 +8,26 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+
 import {
   client as createClientApp,
-  ndJsonStream,
   type ClientConnection,
+  ndJsonStream,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
-  type Stream,
+  type Stream
 } from "@agentclientprotocol/sdk/experimental/v2/unstable"
-import { ToolCallId, LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from "@deepseek-ai/dsh-llm"
-import { composeRuntime } from "../src/compose.ts"
+import {
+  type GenerateOptions,
+  LlmAdapter,
+  type LlmResolvedModelInfo,
+  type StreamChunk,
+  ToolCallId
+} from "@deepseek-ai/dsh-llm"
+
 import * as Bridge from "../src/bridge.ts"
-import { textResponse, untilFrame, type CapturedUpdate } from "./harness.ts"
+import { composeRuntime } from "../src/compose.ts"
+import { type CapturedUpdate, textResponse, untilFrame } from "./harness.ts"
 
 class MockAdapter extends LlmAdapter {
   readonly requests: GenerateOptions[] = []
@@ -51,13 +59,13 @@ function toolCallResponse(rawCallId: string, name: string, args: object): Stream
     { type: "tool-call-delta", index: 0, id: callId, name, argumentsDelta: argumentsJson },
     { type: "block-end", index: 0, block: { type: "tool-call", id: callId, name, arguments: argumentsJson } },
     { type: "usage", usage: { inputTokens: 10, outputTokens: 5 } },
-    { type: "finish", reason: { kind: "tool-calls" } },
+    { type: "finish", reason: { kind: "tool-calls" } }
   ]
 }
 
 async function makeFullHarness(
   script: StreamChunk[][],
-  options: { permissionMode?: "read-only" | "workspace-write"; workspaceRoot?: string } = {},
+  options: { permissionMode?: "read-only" | "workspace-write"; workspaceRoot?: string } = {}
 ) {
   const adapter = new MockAdapter(script)
   const ctx = await composeRuntime({ sessionsRoot: mkdtempSync(join(tmpdir(), "dsh-agent-tools-")), ...options })
@@ -71,7 +79,9 @@ async function makeFullHarness(
   const updates: CapturedUpdate[] = []
   const permissionRequests: RequestPermissionRequest[] = []
   const harness = {
-    onPermission: (_signal: AbortSignal): RequestPermissionResponse | Promise<RequestPermissionResponse> => ({ outcome: { outcome: "cancelled" as const } }),
+    onPermission: (_signal: AbortSignal): RequestPermissionResponse | Promise<RequestPermissionResponse> => ({
+      outcome: { outcome: "cancelled" as const }
+    })
   }
 
   await ctx.plugin({
@@ -79,44 +89,72 @@ async function makeFullHarness(
     inject: [...Bridge.inject],
     apply: (inner: typeof ctx) => {
       Bridge.apply(inner, { provider: "mock", model: "mock", stream: agentStream })
-    },
+    }
   })
 
   const connection: ClientConnection = createClientApp()
-    .onNotification("session/update", context => {
+    .onNotification("session/update", (context) => {
       updates.push(context.params.update as CapturedUpdate)
     })
-    .onRequest("session/request_permission", context => {
+    .onRequest("session/request_permission", (context) => {
       permissionRequests.push(context.params)
       return harness.onPermission(context.signal)
     })
     .connect(clientStream)
 
   const states = () =>
-    updates.filter(update => update.sessionUpdate === "state_update").map(update => ({ state: update.state, stopReason: update.stopReason }))
+    updates
+      .filter((update) => update.sessionUpdate === "state_update")
+      .map((update) => ({ state: update.state, stopReason: update.stopReason }))
   const toolFrames = () =>
-    updates.filter(update => update.sessionUpdate === "tool_call_update") as Array<
-      CapturedUpdate & { toolCallId: string; status?: string; name?: string; content?: Array<{ type: string; content?: { type: string; text?: string } }> }
+    updates.filter((update) => update.sessionUpdate === "tool_call_update") as Array<
+      CapturedUpdate & {
+        toolCallId: string
+        status?: string
+        name?: string
+        content?: Array<{ type: string; content?: { type: string; text?: string } }>
+      }
     >
   const initialize = () =>
-    connection.agent.request("initialize", { protocolVersion: 2, info: { name: "test-client", version: "0.0.0" }, capabilities: {} })
-  return { ctx, adapter, agent: connection.agent, updates, states, toolFrames, permissionRequests, harness, initialize, dispose: () => ctx.fiber.dispose() }
+    connection.agent.request("initialize", {
+      protocolVersion: 2,
+      info: { name: "test-client", version: "0.0.0" },
+      capabilities: {}
+    })
+  return {
+    ctx,
+    adapter,
+    agent: connection.agent,
+    updates,
+    states,
+    toolFrames,
+    permissionRequests,
+    harness,
+    initialize,
+    dispose: () => ctx.fiber.dispose()
+  }
 }
 
 describe("tool surface over the real composition", () => {
   test("cancel withdraws a pending permission and a late answer cannot revive running", async () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "dsh-agent-permission-cancel-"))
     const command = "printf unused > marker.txt"
-    const h = await makeFullHarness([
-      toolCallResponse("denied-call", "bash", { command, description: "write a marker" }),
-      toolCallResponse("cancel-call", "bash", {
-        command, description: "write a marker", sandbox_permissions: "workspace-write", justification: "test approval cancellation",
-      }),
-      textResponse("next turn"),
-    ], { permissionMode: "read-only", workspaceRoot })
+    const h = await makeFullHarness(
+      [
+        toolCallResponse("denied-call", "bash", { command, description: "write a marker" }),
+        toolCallResponse("cancel-call", "bash", {
+          command,
+          description: "write a marker",
+          sandbox_permissions: "workspace-write",
+          justification: "test approval cancellation"
+        }),
+        textResponse("next turn")
+      ],
+      { permissionMode: "read-only", workspaceRoot }
+    )
     const answer = Promise.withResolvers<RequestPermissionResponse>()
     const withdrawn = Promise.withResolvers<void>()
-    h.harness.onPermission = signal => {
+    h.harness.onPermission = (signal) => {
       if (signal.aborted) withdrawn.resolve()
       else signal.addEventListener("abort", () => withdrawn.resolve(), { once: true })
       return answer.promise
@@ -148,10 +186,13 @@ describe("tool surface over the real composition", () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), "dsh-agent-ws-"))
     const h = await makeFullHarness(
       [
-        toolCallResponse("call-1", "bash", { command: "printf dsh-tools-ok > marker.txt && cat marker.txt", description: "write then read a marker" }),
-        textResponse("done"),
+        toolCallResponse("call-1", "bash", {
+          command: "printf dsh-tools-ok > marker.txt && cat marker.txt",
+          description: "write then read a marker"
+        }),
+        textResponse("done")
       ],
-      { permissionMode: "workspace-write", workspaceRoot },
+      { permissionMode: "workspace-write", workspaceRoot }
     )
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: workspaceRoot })
@@ -166,8 +207,8 @@ describe("tool surface over the real composition", () => {
     expect(frames.at(0)?.status).toBe("in_progress")
     expect(frames.at(-1)?.status).toBe("completed")
     const resultText = frames
-      .flatMap(frame => frame.content ?? [])
-      .map(entry => entry.content?.text ?? "")
+      .flatMap((frame) => frame.content ?? [])
+      .map((entry) => entry.content?.text ?? "")
       .join("")
     expect(resultText).toContain("dsh-tools-ok")
     await h.dispose()
@@ -186,11 +227,11 @@ describe("tool surface over the real composition", () => {
           command,
           description: "write a marker",
           sandbox_permissions: "workspace-write",
-          justification: "the marker file must be written inside the workspace",
+          justification: "the marker file must be written inside the workspace"
         }),
-        textResponse("done"),
+        textResponse("done")
       ],
-      { permissionMode: "read-only", workspaceRoot },
+      { permissionMode: "read-only", workspaceRoot }
     )
     h.harness.onPermission = () => ({ outcome: { outcome: "selected", optionId: "allow-once" } })
     await h.initialize()
@@ -201,14 +242,14 @@ describe("tool surface over the real composition", () => {
     // Exactly one approval, v2 subject scheme, requires_action while pending.
     expect(h.permissionRequests.length).toBe(1)
     expect(h.permissionRequests[0]?.subject?.type).toBe("tool_call")
-    expect(h.states().map(entry => entry.state)).toContain("requires_action")
+    expect(h.states().map((entry) => entry.state)).toContain("requires_action")
 
     // The escalated retry completed and produced the output.
     const frames = h.toolFrames()
     expect(frames.at(-1)?.status).toBe("completed")
     const resultText = frames
-      .flatMap(frame => frame.content ?? [])
-      .map(entry => entry.content?.text ?? "")
+      .flatMap((frame) => frame.content ?? [])
+      .map((entry) => entry.content?.text ?? "")
       .join("")
     expect(resultText).toContain("escalated-ok")
     await h.dispose()
@@ -224,11 +265,11 @@ describe("tool surface over the real composition", () => {
           command,
           description: "write a marker",
           sandbox_permissions: "workspace-write",
-          justification: "needs to write the marker",
+          justification: "needs to write the marker"
         }),
-        textResponse("acknowledged"),
+        textResponse("acknowledged")
       ],
-      { permissionMode: "read-only", workspaceRoot },
+      { permissionMode: "read-only", workspaceRoot }
     )
     h.harness.onPermission = () => ({ outcome: { outcome: "selected", optionId: "reject-once" } })
     await h.initialize()
@@ -249,10 +290,10 @@ describe("tool surface over the real composition", () => {
       toolCallResponse("call-1", "todo_write", {
         todos: [
           { content: "first task", status: "in_progress" },
-          { content: "second task", status: "pending" },
-        ],
+          { content: "second task", status: "pending" }
+        ]
       }),
-      textResponse("planned"),
+      textResponse("planned")
     ])
     h.harness.onPermission = () => ({ outcome: { outcome: "selected", optionId: "allow-once" } })
     await h.initialize()
@@ -260,13 +301,13 @@ describe("tool surface over the real composition", () => {
     await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "plan it" }] })
     await untilFrame(() => h.states().at(-1)?.state === "idle", 15000)
 
-    const plans = h.updates.filter(update => update.sessionUpdate === "plan_update") as Array<
+    const plans = h.updates.filter((update) => update.sessionUpdate === "plan_update") as Array<
       CapturedUpdate & { plan: { type: string; entries: Array<{ content: string; status: string }> } }
     >
     expect(plans.length).toBeGreaterThan(0)
     const entries = plans.at(-1)?.plan.entries ?? []
-    expect(entries.map(entry => entry.content)).toEqual(["first task", "second task"])
-    expect(entries.map(entry => entry.status)).toEqual(["in_progress", "pending"])
+    expect(entries.map((entry) => entry.content)).toEqual(["first task", "second task"])
+    expect(entries.map((entry) => entry.status)).toEqual(["in_progress", "pending"])
     await h.dispose()
   }, 20000)
 })

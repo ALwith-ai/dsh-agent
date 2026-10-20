@@ -20,52 +20,54 @@
  * means replay the whole conversation as session/update frames.
  */
 
-import type { Context } from "@deepseek-ai/cordis"
-import packageJson from "../package.json" with { type: "json" }
 import { randomUUID } from "node:crypto"
 import { realpathSync } from "node:fs"
 import { isAbsolute } from "node:path"
 import { Readable, Writable } from "node:stream"
-import Schema from "@deepseek-ai/schemastery"
-import { createUserMessage, errorChain } from "@deepseek-ai/dsh-llm"
+
 import {
-  RequestError,
   agent as createAgentApp,
-  ndJsonStream,
   type AgentConnection,
   type AgentContext,
   type CancelSessionNotification,
   type CloseSessionRequest,
   type CloseSessionResponse,
-  type ListSessionsRequest,
-  type ListSessionsResponse,
   type CompactionId,
   type InitializeResponse,
+  type ListSessionsRequest,
+  type ListSessionsResponse,
+  type MessageId,
+  ndJsonStream,
   type NewSessionRequest,
   type NewSessionResponse,
+  type PlanId,
   type PromptRequest,
   type PromptResponse,
+  RequestError,
   type ResumeSessionRequest,
   type ResumeSessionResponse,
   type SessionConfigOption,
   type SetSessionConfigOptionRequest,
   type SetSessionConfigOptionResponse,
-  type MessageId,
-  type PlanId,
+  type Stream,
   type ToolCallContent,
   type ToolCallId,
-  type UpdateSessionNotification,
-  type Stream,
+  type UpdateSessionNotification
 } from "@agentclientprotocol/sdk/experimental/v2/unstable"
+import type { Context } from "@deepseek-ai/cordis"
 import type { Agent } from "@deepseek-ai/dsh-agent"
-import { SessionId, type SessionEvent, type TurnEndReason } from "@deepseek-ai/dsh-session"
+// Event-map augmentation: the compaction/* session events this bridge maps.
+import type {} from "@deepseek-ai/dsh-compaction"
+import { createUserMessage, errorChain } from "@deepseek-ai/dsh-llm"
+import type { ContentBlock as DshContentBlock } from "@deepseek-ai/dsh-llm"
+import { type SessionEvent, SessionId, type TurnEndReason } from "@deepseek-ai/dsh-session"
+import type {} from "@deepseek-ai/dsh-session-persistence"
 // Side-effect type imports: declaration-merge the approval/request waterfall
 // types and the ctx.sessionPersistence key.
 import type {} from "@deepseek-ai/dsh-user-approval"
-// Event-map augmentation: the compaction/* session events this bridge maps.
-import type {} from "@deepseek-ai/dsh-compaction"
-import type {} from "@deepseek-ai/dsh-session-persistence"
-import type { ContentBlock as DshContentBlock } from "@deepseek-ai/dsh-llm"
+import Schema from "@deepseek-ai/schemastery"
+
+import packageJson from "../package.json" with { type: "json" }
 import { acpPromptToText, promptHasUnsupportedContent, turnEndToStopReason } from "./codec.ts"
 
 export const name = "dsh-agent"
@@ -95,7 +97,7 @@ export const Config: Schema<AcpConfig> = Schema.object({
   provider: Schema.string(),
   model: Schema.string(),
   providerId: Schema.string(),
-  titleModel: Schema.string(),
+  titleModel: Schema.string()
 })
 
 /** Per-session protocol state. */
@@ -103,15 +105,20 @@ interface SessionRecord {
   agent: Agent
   dispose: () => Promise<void>
   /** In-flight prompt and its captured turn number for exact settlement. */
-  inflight: {
-    revision: number
-    messageId: string
-    turn: number | undefined
-    endReason: TurnEndReason | undefined
-    cancelled: boolean
-  } | undefined
+  inflight:
+    | {
+        revision: number
+        messageId: string
+        turn: number | undefined
+        endReason: TurnEndReason | undefined
+        cancelled: boolean
+      }
+    | undefined
   /** Requests awaiting a model-visible user/message insertion, keyed by the Harness ID. */
-  pendingPrompts: Map<string, { text: string; resolve: (response: PromptResponse) => void; reject: (error: Error) => void }>
+  pendingPrompts: Map<
+    string,
+    { text: string; resolve: (response: PromptResponse) => void; reject: (error: Error) => void }
+  >
   /** Pending permission requests; while > 0 the reported state is requires_action. */
   pendingPermissions: number
   /** Last emitted state_update value, deduplicating consecutive identical frames. */
@@ -202,9 +209,10 @@ export function apply(ctx: Context, config: AcpConfig): void {
     record.lastState = state
     notify({
       sessionId: record.agent.session.id,
-      update: state === "running"
-        ? { sessionUpdate: "state_update", state: "running" }
-        : { sessionUpdate: "state_update", state: "requires_action" },
+      update:
+        state === "running"
+          ? { sessionUpdate: "state_update", state: "running" }
+          : { sessionUpdate: "state_update", state: "requires_action" }
     })
   }
 
@@ -216,7 +224,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
   const reportUserMessage = (record: SessionRecord, messageId: string, text: string): void => {
     notify({
       sessionId: record.agent.session.id,
-      update: { sessionUpdate: "user_message", messageId: MessageId(messageId), content: [{ type: "text", text }] },
+      update: { sessionUpdate: "user_message", messageId: MessageId(messageId), content: [{ type: "text", text }] }
     })
   }
 
@@ -224,14 +232,19 @@ export function apply(ctx: Context, config: AcpConfig): void {
     end_turn: { stopReason: "end_turn" },
     max_tokens: { stopReason: "max_tokens" },
     cancelled: { stopReason: "cancelled" },
-    _error: { stopReason: "_error" },
+    _error: { stopReason: "_error" }
   } as const
 
   const reportIdle = (record: SessionRecord, stopReason: keyof typeof idleReasons, error?: string): void => {
     record.lastState = "idle"
     notify({
       sessionId: record.agent.session.id,
-      update: { sessionUpdate: "state_update", state: "idle", ...idleReasons[stopReason], ...(error === undefined ? {} : { _meta: { alwith: { error } } }) },
+      update: {
+        sessionUpdate: "state_update",
+        state: "idle",
+        ...idleReasons[stopReason],
+        ...(error === undefined ? {} : { _meta: { alwith: { error } } })
+      }
     })
   }
 
@@ -253,7 +266,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
       // advertises one (efforts are adapter-owned; an invented id is rejected).
       const modelInfo = await ctx.llm.resolveModelInfo(config.provider, config.titleModel).catch(() => undefined)
       if (signal.aborted) return
-      const lowEffort = modelInfo?.reasoning?.efforts.find(effort => String(effort.id) === "low")?.id
+      const lowEffort = modelInfo?.reasoning?.efforts.find((effort) => String(effort.id) === "low")?.id
       let title = ""
       for await (const chunk of ctx.llm.stream({
         provider: config.provider,
@@ -264,7 +277,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
           "Reply with the title only: at most six words, no quotes, no trailing punctuation.",
         messages: [message],
         maxTokens: 128,
-        signal,
+        signal
       })) {
         if (chunk.type === "text-delta") title += chunk.text
         if (chunk.type === "finish" && chunk.reason.kind !== "stop" && chunk.reason.kind !== "max-tokens") {
@@ -281,7 +294,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
       if (sessions.get(record.agent.session.id) !== record) return
       notify({
         sessionId: record.agent.session.id,
-        update: { sessionUpdate: "session_info_update", title },
+        update: { sessionUpdate: "session_info_update", title }
       })
     } catch (error: unknown) {
       if (signal.aborted) return
@@ -297,7 +310,9 @@ export function apply(ctx: Context, config: AcpConfig): void {
    * silently drop it. When a store is mounted, this is where bytes get read into the frame.
    */
   const noImageAttachments = (attachmentId: string): Error =>
-    new Error(`acp: image attachment ${attachmentId} cannot be carried: no attachment store is mounted in this composition`)
+    new Error(
+      `acp: image attachment ${attachmentId} cannot be carried: no attachment store is mounted in this composition`
+    )
 
   /** Map a tool result's model-facing blocks to v2 tool-call content (text verbatim). */
   const toolResultContent = (blocks: readonly DshContentBlock[]): ToolCallContent[] => {
@@ -332,19 +347,22 @@ export function apply(ctx: Context, config: AcpConfig): void {
     return pending
   }
 
-  const emitUsage = (record: SessionRecord, usage: { inputTokens: number; outputTokens: number; cacheReadTokens?: number } | undefined): void => {
+  const emitUsage = (
+    record: SessionRecord,
+    usage: { inputTokens: number; outputTokens: number; cacheReadTokens?: number } | undefined
+  ): void => {
     if (usage === undefined) return
     const agent = record.agent
     const model = record.model
-    void resolveContextWindow(model).then(size => {
+    void resolveContextWindow(model).then((size) => {
       if (size === undefined || closed || ownedRecord(agent) !== record || record.model !== model) return
       notify({
         sessionId: record.agent.session.id,
         update: {
           sessionUpdate: "usage_update",
           used: usage.inputTokens + (usage.cacheReadTokens ?? 0) + usage.outputTokens,
-          size,
-        },
+          size
+        }
       })
     })
   }
@@ -358,8 +376,8 @@ export function apply(ctx: Context, config: AcpConfig): void {
     alwith: {
       providerId: config.providerId ?? config.provider ?? "dsh",
       model: record.model,
-      timestamp: new Date().toISOString(),
-    },
+      timestamp: new Date().toISOString()
+    }
   })
 
   /** Build the downlinked model config option from the adapter catalog; empty catalog downlinks nothing. */
@@ -377,8 +395,8 @@ export function apply(ctx: Context, config: AcpConfig): void {
         category: "model",
         type: "select",
         currentValue: record.model,
-        options: models.map(model => ({ value: model.id, name: model.name })),
-      },
+        options: models.map((model) => ({ value: model.id, name: model.name }))
+      }
     ]
   }
 
@@ -386,7 +404,8 @@ export function apply(ctx: Context, config: AcpConfig): void {
     const inflight = record.inflight
     if (inflight === undefined) return
     record.inflight = undefined
-    for (const pending of record.pendingPrompts.values()) pending.reject(new RequestError(-32800, "Prompt cancelled before insertion"))
+    for (const pending of record.pendingPrompts.values())
+      pending.reject(new RequestError(-32800, "Prompt cancelled before insertion"))
     record.pendingPrompts.clear()
   }
 
@@ -452,7 +471,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
       titled: true, // a resumed session already carries its name on the client
       titleAbort: new AbortController(),
       model: config.model ?? "",
-      switching: undefined,
+      switching: undefined
     }
     sessions.set(sessionId, record)
     return record
@@ -473,7 +492,11 @@ export function apply(ctx: Context, config: AcpConfig): void {
           if (block.type === "text" && block.text.length > 0) {
             notify({
               sessionId,
-              update: { sessionUpdate: "user_message_chunk", messageId: MessageId(message.id), content: { type: "text", text: block.text } },
+              update: {
+                sessionUpdate: "user_message_chunk",
+                messageId: MessageId(message.id),
+                content: { type: "text", text: block.text }
+              }
             })
           }
         }
@@ -483,7 +506,12 @@ export function apply(ctx: Context, config: AcpConfig): void {
           if (block.type === "text" && block.text.length > 0) {
             notify({
               sessionId,
-              update: { sessionUpdate: "agent_message_chunk", messageId: MessageId(message.id), content: { type: "text", text: block.text }, _meta: turnMeta(record) },
+              update: {
+                sessionUpdate: "agent_message_chunk",
+                messageId: MessageId(message.id),
+                content: { type: "text", text: block.text },
+                _meta: turnMeta(record)
+              }
             })
           } else if (block.type === "reasoning" && block.text.length > 0) {
             notify({
@@ -491,8 +519,8 @@ export function apply(ctx: Context, config: AcpConfig): void {
               update: {
                 sessionUpdate: "agent_thought_chunk",
                 messageId: MessageId(`${message.id}/thought`),
-                content: { type: "text", text: block.text },
-              },
+                content: { type: "text", text: block.text }
+              }
             })
           } else if (block.type === "image") {
             throw noImageAttachments(block.attachment.attachmentId)
@@ -527,12 +555,18 @@ export function apply(ctx: Context, config: AcpConfig): void {
         return
       }
       const messageId = attemptMessageIds.get(frame.attemptId)
-      if (messageId === undefined) throw new Error(`assistant stream chunk for attempt ${frame.attemptId} arrived before its start frame`)
+      if (messageId === undefined)
+        throw new Error(`assistant stream chunk for attempt ${frame.attemptId} arrived before its start frame`)
       const chunk = frame.chunk
       if (chunk.type === "text-delta" && chunk.text.length > 0) {
         notify({
           sessionId: agent.session.id,
-          update: { sessionUpdate: "agent_message_chunk", messageId, content: { type: "text", text: chunk.text }, _meta: turnMeta(record) },
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            messageId,
+            content: { type: "text", text: chunk.text },
+            _meta: turnMeta(record)
+          }
         })
       } else if (chunk.type === "reasoning-delta" && chunk.text.length > 0) {
         notify({
@@ -541,8 +575,8 @@ export function apply(ctx: Context, config: AcpConfig): void {
             sessionUpdate: "agent_thought_chunk",
             messageId: MessageId(`${messageId}/thought`),
             content: { type: "text", text: chunk.text },
-            _meta: turnMeta(record),
-          },
+            _meta: turnMeta(record)
+          }
         })
       }
     }
@@ -576,8 +610,8 @@ export function apply(ctx: Context, config: AcpConfig): void {
             title: event.data.name,
             status: "in_progress",
             rawInput: parseRawInput(event.data.arguments),
-            _meta: turnMeta(record),
-          },
+            _meta: turnMeta(record)
+          }
         })
       } else if (event.type === "tool/result") {
         const result = event.data.message
@@ -588,10 +622,14 @@ export function apply(ctx: Context, config: AcpConfig): void {
             toolCallId: ToolCallId(result.toolCallId),
             status: event.data.error !== undefined || result.isError === true ? "failed" : "completed",
             content: toolResultContent(result.content),
-            _meta: turnMeta(record),
-          },
+            _meta: turnMeta(record)
+          }
         })
-      } else if (event.type === "compaction/start" || event.type === "compaction/summary" || event.type === "compaction/end") {
+      } else if (
+        event.type === "compaction/start" ||
+        event.type === "compaction/summary" ||
+        event.type === "compaction/end"
+      ) {
         for (const update of compactionUpdates(event)) notify({ sessionId: record.agent.session.id, update })
       } else if (event.type === "todo/write") {
         // Whole-list snapshot; v2 item-based plans are replaced per update, so
@@ -603,9 +641,13 @@ export function apply(ctx: Context, config: AcpConfig): void {
             plan: {
               type: "items",
               planId: PlanId(record.agent.session.id),
-              entries: event.data.todos.map(todo => ({ content: todo.content, status: todo.status, priority: "medium" as const })),
-            },
-          },
+              entries: event.data.todos.map((todo) => ({
+                content: todo.content,
+                status: todo.status,
+                priority: "medium" as const
+              }))
+            }
+          }
         })
       }
     } finally {
@@ -647,19 +689,23 @@ export function apply(ctx: Context, config: AcpConfig): void {
     const callId = request.callId
     record.pendingPermissions += 1
     if (record.pendingPermissions === 1) notifyState(record, "requires_action")
-    const response = client.request("session/request_permission", {
+    const response = client.request(
+      "session/request_permission",
+      {
         sessionId: record.agent.session.id,
         title: request.reason ?? `Allow ${request.toolName}?`,
         subject: { type: "tool_call", toolCall: { toolCallId: callId } },
         options: [
           { optionId: "allow-once", name: "Allow once", kind: "allow_once" },
-          { optionId: "reject-once", name: "Reject", kind: "reject_once" },
-        ],
-      }, { cancellationSignal: request.signal })
+          { optionId: "reject-once", name: "Reject", kind: "reject_once" }
+        ]
+      },
+      { cancellationSignal: request.signal }
+    )
     // SDK cancellation is cooperative; release local state even if the peer answers late.
     const signal = request.signal
     let onAbort: (() => void) | undefined
-    const aborted = new Promise<{ outcome: { outcome: "cancelled" } }>(resolve => {
+    const aborted = new Promise<{ outcome: { outcome: "cancelled" } }>((resolve) => {
       onAbort = () => resolve({ outcome: { outcome: "cancelled" } })
       if (signal?.aborted) onAbort()
       else signal?.addEventListener("abort", onAbort, { once: true })
@@ -674,13 +720,19 @@ export function apply(ctx: Context, config: AcpConfig): void {
       .finally(() => {
         if (onAbort !== undefined) signal?.removeEventListener("abort", onAbort)
         record.pendingPermissions -= 1
-        if (record.pendingPermissions === 0 && record.inflight !== undefined && !record.inflight.cancelled
-          && ownedRecord(request.agent) === record && !closed) notifyState(record, "running")
+        if (
+          record.pendingPermissions === 0 &&
+          record.inflight !== undefined &&
+          !record.inflight.cancelled &&
+          ownedRecord(request.agent) === record &&
+          !closed
+        )
+          notifyState(record, "running")
       })
   })
 
   const app = createAgentApp()
-    .onConnect(connected => {
+    .onConnect((connected) => {
       client = connected.client
     })
     .onRequest("initialize", (): InitializeResponse => {
@@ -690,7 +742,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
         authMethods: [],
         // No private extensions: history continuation is standard `session/resume`, served by the
         // mounted persistence provider (the ALwith record library when the host selects it).
-        capabilities: { session: { prompt: {} } },
+        capabilities: { session: { prompt: {} } }
       }
     })
     .onRequest("session/new", async (context): Promise<NewSessionResponse> => {
@@ -701,7 +753,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
       const handle = await agents.create({
         sessionId,
         meta: { cwd: params.cwd },
-        agentOptions: agentOptions(config),
+        agentOptions: agentOptions(config)
       })
       if (closed) {
         await handle.dispose()
@@ -711,13 +763,13 @@ export function apply(ctx: Context, config: AcpConfig): void {
         agent: handle.agent,
         dispose: () => handle.dispose(),
         inflight: undefined,
-      pendingPrompts: new Map(),
+        pendingPrompts: new Map(),
         pendingPermissions: 0,
         lastState: undefined,
         titled: false,
         titleAbort: new AbortController(),
         model: config.model ?? "",
-        switching: undefined,
+        switching: undefined
       })
       const record = sessions.get(sessionId)
       if (record === undefined) throw internalError("session record vanished during session/new")
@@ -740,11 +792,11 @@ export function apply(ctx: Context, config: AcpConfig): void {
       const params: ListSessionsRequest = context.params
       const persistence = ctx.get("sessionPersistence")
       if (persistence === undefined) throw internalError("session persistence is not mounted")
-      const headers = (await persistence.list()).map(snapshot => snapshot.header)
+      const headers = (await persistence.list()).map((snapshot) => snapshot.header)
       const sessions = headers
-        .filter(header => params.cwd === undefined || params.cwd === null || header.cwd === params.cwd)
+        .filter((header) => params.cwd === undefined || params.cwd === null || header.cwd === params.cwd)
         .sort((a, b) => b.createdAt - a.createdAt)
-        .map(header => {
+        .map((header) => {
           // Every bridge session is created with meta.cwd; a header without one is a
           // persistence anomaly, not a session the host could resume.
           if (header.cwd === undefined) throw internalError(`persisted session ${header.id} has no cwd`)
@@ -781,71 +833,75 @@ export function apply(ctx: Context, config: AcpConfig): void {
       return { configOptions: await modelConfigOptions(acquired) }
     })
     .onRequest("session/set_config_option", async (context): Promise<SetSessionConfigOptionResponse> => {
-        assertOpen()
-        const params: SetSessionConfigOptionRequest = context.params
-        const { sessionId, configId } = params
-        const record = requireSession(sessionId)
-        if (configId !== "model") throw invalidParams(`unsupported config option: ${configId}`)
-        // The schema keeps an open `{ type: string; value: unknown }` branch for future
-        // value kinds, so the discriminant alone does not narrow `value`.
-        const value = params.type === "id" && typeof params.value === "string" ? params.value : undefined
-        if (value === undefined || value.length === 0) throw invalidParams("model is a select option: send { type: \"id\", value: <model id> }")
-        if (record.inflight !== undefined) throw invalidParams("cannot switch model while a prompt is in flight")
-        if (record.switching !== undefined) throw invalidParams("a model switch is already in progress")
-        if (record.model !== value) {
-          // Handle disposal durably clears the inbox; retain unconsumed seed/input.
-          if (record.agent.inbox.nextTurn.length > 0 || record.agent.inbox.nextStep.length > 0) {
-            throw invalidParams("cannot switch model while input is pending; send a prompt first")
-          }
-          // In-place options are immutable on a live dsh agent; the sanctioned
-          // switch is dispose + resume with new agentOptions — same machinery
-          // as session/resume, so history and turn numbering carry over.
-          const persistence = ctx.get("sessionPersistence")
-          if (persistence === undefined) {
-            throw internalError("session persistence is not configured; model switching is unavailable")
-          }
-          const id = record.agent.session.id
-          record.switching = (async () => {
-            const options = { ...(config.provider !== undefined ? { provider: config.provider } : {}), model: value }
-            // The flush is the durability barrier: it materializes even an untouched session
-            // (header only), so every session is resumable afterwards.
-            await ctx.sessions.flush(record.agent.session)
-            await record.dispose()
-            if (closed || sessions.get(id) !== record) throw internalError("session closed during model switch")
-            const handle = await agents.resume({ resumeSessionId: id, agentOptions: options })
-            if (closed || sessions.get(id) !== record) {
-              await handle.dispose()
-              throw internalError("session closed during model switch")
-            }
-            record.agent = handle.agent
-            record.dispose = () => handle.dispose()
-            record.model = value
-          })()
-          try {
-            await record.switching
-          } catch (error: unknown) {
-            // A failed replacement must not leave a retired agent addressable.
-            if (sessions.get(id) === record) sessions.delete(id)
-            record.titleAbort.abort()
-            await record.dispose()
-            throw internalError(`model switch failed; recover the persisted session with session/resume: ${errorChain(error)}`)
-          } finally {
-            record.switching = undefined
-          }
+      assertOpen()
+      const params: SetSessionConfigOptionRequest = context.params
+      const { sessionId, configId } = params
+      const record = requireSession(sessionId)
+      if (configId !== "model") throw invalidParams(`unsupported config option: ${configId}`)
+      // The schema keeps an open `{ type: string; value: unknown }` branch for future
+      // value kinds, so the discriminant alone does not narrow `value`.
+      const value = params.type === "id" && typeof params.value === "string" ? params.value : undefined
+      if (value === undefined || value.length === 0)
+        throw invalidParams('model is a select option: send { type: "id", value: <model id> }')
+      if (record.inflight !== undefined) throw invalidParams("cannot switch model while a prompt is in flight")
+      if (record.switching !== undefined) throw invalidParams("a model switch is already in progress")
+      if (record.model !== value) {
+        // Handle disposal durably clears the inbox; retain unconsumed seed/input.
+        if (record.agent.inbox.nextTurn.length > 0 || record.agent.inbox.nextStep.length > 0) {
+          throw invalidParams("cannot switch model while input is pending; send a prompt first")
         }
-        const configOptions = await modelConfigOptions(record)
-        assertOpen()
-        if (sessions.get(record.agent.session.id) !== record) throw invalidParams("session closed during model switch")
-        notify({ sessionId: record.agent.session.id, update: { sessionUpdate: "config_option_update", configOptions } })
-        return { configOptions }
-      })
+        // In-place options are immutable on a live dsh agent; the sanctioned
+        // switch is dispose + resume with new agentOptions — same machinery
+        // as session/resume, so history and turn numbering carry over.
+        const persistence = ctx.get("sessionPersistence")
+        if (persistence === undefined) {
+          throw internalError("session persistence is not configured; model switching is unavailable")
+        }
+        const id = record.agent.session.id
+        record.switching = (async () => {
+          const options = { ...(config.provider !== undefined ? { provider: config.provider } : {}), model: value }
+          // The flush is the durability barrier: it materializes even an untouched session
+          // (header only), so every session is resumable afterwards.
+          await ctx.sessions.flush(record.agent.session)
+          await record.dispose()
+          if (closed || sessions.get(id) !== record) throw internalError("session closed during model switch")
+          const handle = await agents.resume({ resumeSessionId: id, agentOptions: options })
+          if (closed || sessions.get(id) !== record) {
+            await handle.dispose()
+            throw internalError("session closed during model switch")
+          }
+          record.agent = handle.agent
+          record.dispose = () => handle.dispose()
+          record.model = value
+        })()
+        try {
+          await record.switching
+        } catch (error: unknown) {
+          // A failed replacement must not leave a retired agent addressable.
+          if (sessions.get(id) === record) sessions.delete(id)
+          record.titleAbort.abort()
+          await record.dispose()
+          throw internalError(
+            `model switch failed; recover the persisted session with session/resume: ${errorChain(error)}`
+          )
+        } finally {
+          record.switching = undefined
+        }
+      }
+      const configOptions = await modelConfigOptions(record)
+      assertOpen()
+      if (sessions.get(record.agent.session.id) !== record) throw invalidParams("session closed during model switch")
+      notify({ sessionId: record.agent.session.id, update: { sessionUpdate: "config_option_update", configOptions } })
+      return { configOptions }
+    })
     .onRequest("session/prompt", async (context): Promise<PromptResponse> => {
       assertOpen()
       const params: PromptRequest = context.params
       const record = requireSession(params.sessionId)
       while (record.switching !== undefined) await record.switching.catch(() => {})
       assertOpen()
-      if (sessions.get(record.agent.session.id) !== record) throw invalidParams("session closed while prompt was waiting")
+      if (sessions.get(record.agent.session.id) !== record)
+        throw invalidParams("session closed while prompt was waiting")
       if (record.inflight?.cancelled) throw invalidParams("session cancellation is still in progress")
       if (promptHasUnsupportedContent(params.prompt)) {
         throw invalidParams("only text and resource_link prompt content is supported")
@@ -871,7 +927,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
         const title = text.trim().replace(/\s+/g, " ").slice(0, 60)
         notify({
           sessionId: record.agent.session.id,
-          update: { sessionUpdate: "session_info_update", title },
+          update: { sessionUpdate: "session_info_update", title }
         })
       }
       const receipt = Promise.withResolvers<PromptResponse>()
@@ -891,7 +947,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
         messageId: message.id,
         turn: undefined,
         endReason: undefined,
-        cancelled: false,
+        cancelled: false
       }
       record.inflight = inflight
       try {
@@ -916,7 +972,8 @@ export function apply(ctx: Context, config: AcpConfig): void {
           if (end?.kind === "error") {
             reportIdle(record, "_error", `turn failed: ${end.error.message}`)
           } else {
-            const reason: ReturnType<typeof turnEndToStopReason> = inflight.cancelled || end === undefined ? "cancelled" : turnEndToStopReason(end)
+            const reason: ReturnType<typeof turnEndToStopReason> =
+              inflight.cancelled || end === undefined ? "cancelled" : turnEndToStopReason(end)
             reportIdle(record, reason)
           }
           if (firstPrompt) await refineTitle(record, text)
@@ -955,7 +1012,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
       }
       return {}
     })
-    .onNotification("session/cancel", context => {
+    .onNotification("session/cancel", (context) => {
       const params: CancelSessionNotification = context.params
       const record = sessions.get(SessionId(params.sessionId))
       if (record === undefined || record.inflight === undefined) return
@@ -967,7 +1024,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
     config.stream ??
     ndJsonStream(
       Writable.toWeb(process.stdout) as WritableStream<Uint8Array>,
-      Readable.toWeb(process.stdin) as unknown as ReadableStream<Uint8Array>,
+      Readable.toWeb(process.stdin) as unknown as ReadableStream<Uint8Array>
     )
   const connection: AgentConnection = app.connect(stream)
 
@@ -983,16 +1040,18 @@ export function apply(ctx: Context, config: AcpConfig): void {
       settlePrompt(record)
     }
     quiescing = (async () => {
-      const disposals = await Promise.allSettled(records.map(async record => {
-        await record.switching?.catch(() => {})
-        await record.dispose()
-      }))
+      const disposals = await Promise.allSettled(
+        records.map(async (record) => {
+          await record.switching?.catch(() => {})
+          await record.dispose()
+        })
+      )
       const failures: unknown[] = []
       for (const result of disposals) {
         if (result.status === "rejected") failures.push(result.reason as unknown)
       }
       if (failures.length > 0) {
-        const detail = failures.map(failure => errorChain(failure)).join("; ")
+        const detail = failures.map((failure) => errorChain(failure)).join("; ")
         throw new AggregateError(failures, `ACP agent teardown failed for ${failures.length} session(s): ${detail}`)
       }
     })()
@@ -1019,21 +1078,38 @@ export function apply(ctx: Context, config: AcpConfig): void {
  */
 export function compactionUpdates(event: SessionEvent): UpdateSessionNotification["update"][] {
   if (event.type === "compaction/start") {
-    return [{ sessionUpdate: "compaction_update", compactionId: CompactionId(event.data.compactionId), status: "in_progress" }]
+    return [
+      { sessionUpdate: "compaction_update", compactionId: CompactionId(event.data.compactionId), status: "in_progress" }
+    ]
   }
   if (event.type === "compaction/summary") {
-    return event.data.summary.flatMap(block =>
+    return event.data.summary.flatMap((block) =>
       block.type === "text" && block.text.length > 0
-        ? [{ sessionUpdate: "compaction_summary_chunk" as const, compactionId: CompactionId(event.data.compactionId), content: { type: "text" as const, text: block.text } }]
-        : [],
+        ? [
+            {
+              sessionUpdate: "compaction_summary_chunk" as const,
+              compactionId: CompactionId(event.data.compactionId),
+              content: { type: "text" as const, text: block.text }
+            }
+          ]
+        : []
     )
   }
   if (event.type === "compaction/end") {
     const error = event.data.error
     return [
       error === undefined
-        ? { sessionUpdate: "compaction_update", compactionId: CompactionId(event.data.compactionId), status: "completed" }
-        : { sessionUpdate: "compaction_update", compactionId: CompactionId(event.data.compactionId), status: "failed", error },
+        ? {
+            sessionUpdate: "compaction_update",
+            compactionId: CompactionId(event.data.compactionId),
+            status: "completed"
+          }
+        : {
+            sessionUpdate: "compaction_update",
+            compactionId: CompactionId(event.data.compactionId),
+            status: "failed",
+            error
+          }
     ]
   }
   return []
@@ -1047,7 +1123,7 @@ function CompactionId(id: string): CompactionId {
 function agentOptions(config: AcpConfig): { provider?: string; model?: string } {
   return {
     ...(config.provider !== undefined ? { provider: config.provider } : {}),
-    ...(config.model !== undefined ? { model: config.model } : {}),
+    ...(config.model !== undefined ? { model: config.model } : {})
   }
 }
 
@@ -1061,4 +1137,3 @@ function validateSessionParams(params: NewSessionRequest): void {
     throw invalidParams("mcpServers is not supported")
   }
 }
-

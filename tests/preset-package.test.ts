@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+
 import { composeRuntime } from "../src/compose.ts"
 import { loadPresetPackage } from "../src/preset-package.ts"
 
@@ -42,7 +43,7 @@ async function toolNames(dir: string): Promise<string[]> {
   try {
     return (ctx.tools as unknown as { schemas: (c: unknown) => Array<{ name: string }> })
       .schemas(ctx)
-      .map(schema => schema.name)
+      .map((schema) => schema.name)
       .sort()
   } finally {
     await ctx.fiber.dispose()
@@ -57,10 +58,17 @@ describe("preset packages", () => {
         name: "probe",
         extends: "minimal",
         personaPrefix: "You narrate.",
-        plugins: [{ id: "probe-tools", module: "plugins/tools.js", config: { toolName: "probe", word: "hi" }, requires: ["tools"] }],
-        disabled: ["tool-str-replace-editor"],
+        plugins: [
+          {
+            id: "probe-tools",
+            module: "plugins/tools.js",
+            config: { toolName: "probe", word: "hi" },
+            requires: ["tools"]
+          }
+        ],
+        disabled: ["tool-str-replace-editor"]
       },
-      { "plugins/tools.js": TOOL_PLUGIN },
+      { "plugins/tools.js": TOOL_PLUGIN }
     )
     const pkg = loadPresetPackage(dir)
     expect(pkg.manifest.extends).toBe("minimal")
@@ -71,7 +79,7 @@ describe("preset packages", () => {
   test("skills ride the registry rows when the base preset has none", async () => {
     const dir = writePackage(
       { schemaVersion: 1, name: "skilled", extends: "standard", skillsDir: "skills", plugins: [] },
-      { "skills/story-style/SKILL.md": "---\nname: story-style\ndescription: how to narrate\n---\nNarrate in scenes." },
+      { "skills/story-style/SKILL.md": "---\nname: story-style\ndescription: how to narrate\n---\nNarrate in scenes." }
     )
     const names = await toolNames(dir)
     expect(names).toContain("skill")
@@ -81,18 +89,39 @@ describe("preset packages", () => {
   test("manifest problems fail loud at load", () => {
     expect(() => loadPresetPackage("relative/dir")).toThrow(/absolute/)
     expect(() => loadPresetPackage(mkdtempSync(join(tmpdir(), "dsh-preset-empty-")))).toThrow(/alwith-dsh-preset.json/)
-    expect(() => loadPresetPackage(writePackage({ schemaVersion: 1, name: "x", extends: "nope", plugins: [] }))).toThrow(/extends/)
-    expect(() => loadPresetPackage(writePackage({ schemaVersion: 1, name: "x", extends: "standard", plugins: [{ id: "a", module: "../escape.js" }] }))).toThrow(/inside the package/)
-    expect(() => loadPresetPackage(writePackage({ schemaVersion: 1, name: "x", extends: "standard", plugins: [{ id: "a", module: "missing.js" }] }))).toThrow(/not found/)
-    expect(() => loadPresetPackage(writePackage({ schemaVersion: 1, name: "x", extends: "standard", skillsDir: "nope", plugins: [] }))).toThrow(/skillsDir/)
+    expect(() =>
+      loadPresetPackage(writePackage({ schemaVersion: 1, name: "x", extends: "nope", plugins: [] }))
+    ).toThrow(/extends/)
+    expect(() =>
+      loadPresetPackage(
+        writePackage({
+          schemaVersion: 1,
+          name: "x",
+          extends: "standard",
+          plugins: [{ id: "a", module: "../escape.js" }]
+        })
+      )
+    ).toThrow(/inside the package/)
+    expect(() =>
+      loadPresetPackage(
+        writePackage({ schemaVersion: 1, name: "x", extends: "standard", plugins: [{ id: "a", module: "missing.js" }] })
+      )
+    ).toThrow(/not found/)
+    expect(() =>
+      loadPresetPackage(
+        writePackage({ schemaVersion: 1, name: "x", extends: "standard", skillsDir: "nope", plugins: [] })
+      )
+    ).toThrow(/skillsDir/)
   })
 
   test("a plugin id colliding with a built-in row is refused; a core row cannot be disabled", async () => {
     const collision = writePackage(
       { schemaVersion: 1, name: "x", extends: "standard", plugins: [{ id: "tool-web", module: "p.js" }] },
-      { "p.js": TOOL_PLUGIN },
+      { "p.js": TOOL_PLUGIN }
     )
-    await expect(composeRuntime({ preset: loadPresetPackage(collision) })).rejects.toThrow(/collides with a built-in row/)
+    await expect(composeRuntime({ preset: loadPresetPackage(collision) })).rejects.toThrow(
+      /collides with a built-in row/
+    )
     const core = writePackage({ schemaVersion: 1, name: "x", extends: "standard", plugins: [], disabled: ["llm"] })
     await expect(composeRuntime({ preset: loadPresetPackage(core) })).rejects.toThrow(/core row/)
   })
@@ -100,7 +129,7 @@ describe("preset packages", () => {
   test("a module without a factory default export fails at mount, naming the plugin", async () => {
     const dir = writePackage(
       { schemaVersion: 1, name: "x", extends: "minimal", plugins: [{ id: "broken", module: "broken.js" }] },
-      { "broken.js": "export const nothing = 1\n" },
+      { "broken.js": "export const nothing = 1\n" }
     )
     await expect(composeRuntime({ preset: loadPresetPackage(dir) })).rejects.toThrow(/"broken".*factory/)
   })

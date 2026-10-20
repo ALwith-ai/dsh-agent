@@ -49,5 +49,5 @@ export function acpPromptToText(prompt: readonly AcpContentBlock[]): string {
 
 /** Whether the prompt carries content beyond the baseline (text / resource_link). */
 export function promptHasUnsupportedContent(prompt: readonly AcpContentBlock[]): boolean {
-  return prompt.some(block => block.type !== "text" && block.type !== "resource_link")
+  return prompt.some((block) => block.type !== "text" && block.type !== "resource_link")
 }

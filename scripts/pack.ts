@@ -1,8 +1,9 @@
-/** Bun pack excludes bun.lock; restore the pinned runtime lock in the publishable tarball. */
-import { $ } from "bun"
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join, resolve } from "node:path"
+
+/** Bun pack excludes bun.lock; restore the pinned runtime lock in the publishable tarball. */
+import { $ } from "bun"
 const root = resolve(import.meta.dirname, "..")
 const destination = resolve(process.argv[2] ?? join(root, "dist.tgz"))
 const work = mkdtempSync(join(tmpdir(), "dsh-pack-"))

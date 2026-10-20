@@ -6,10 +6,11 @@
 
 import { homedir } from "node:os"
 import { join } from "node:path"
+
 import { Context } from "@deepseek-ai/cordis"
 import SessionStore from "@deepseek-ai/dsh-session"
-import * as JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl"
 import type {} from "@deepseek-ai/dsh-session-persistence"
+import * as JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl"
 
 function defaultSessionsRoot(): string {
   return process.env.ALWITH_DSH_SESSIONS_ROOT ?? join(homedir(), ".dsh-agent", "sessions")
@@ -58,17 +59,24 @@ export async function runSessionsCli(argv: string[]): Promise<void> {
   const { root, positional } = parseFlags(argv)
   const [command, ...rest] = positional
   if (command === "list") {
-    const headers = await withPersistence(root, async persistence => (await persistence.list()).map(snapshot => snapshot.header))
+    const headers = await withPersistence(root, async (persistence) =>
+      (await persistence.list()).map((snapshot) => snapshot.header)
+    )
     const sessions = [...headers]
       .sort((a, b) => b.createdAt - a.createdAt)
-      .map(header => ({ id: header.id, createdAt: header.createdAt, cwd: header.cwd, parentSession: header.parentSession }))
+      .map((header) => ({
+        id: header.id,
+        createdAt: header.createdAt,
+        cwd: header.cwd,
+        parentSession: header.parentSession
+      }))
     process.stdout.write(`${JSON.stringify({ root, sessions })}\n`)
     return
   }
   if (command === "show") {
     const [id] = rest
     if (id === undefined) throw new Error("usage: sessions show <sessionId> [--root <dir>]")
-    const inspection = await withPersistence(root, async persistence => {
+    const inspection = await withPersistence(root, async (persistence) => {
       const handle = await persistence.open(id as never, "read")
       try {
         const { events } = await handle.read()

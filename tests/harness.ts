@@ -1,21 +1,22 @@
 /** Shared test harness: in-memory transport, v2 client, mock adapter. */
 
-import { Context } from "@deepseek-ai/cordis"
 import {
   client as createClientApp,
-  ndJsonStream,
   type ClientConnection,
+  ndJsonStream,
   type PromptRequest,
   type RequestPermissionRequest,
-  type UpdateSessionNotification,
   type Stream,
+  type UpdateSessionNotification
 } from "@agentclientprotocol/sdk/experimental/v2/unstable"
-import { LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from "@deepseek-ai/dsh-llm"
+import { Context } from "@deepseek-ai/cordis"
 import AgentLoop from "@deepseek-ai/dsh-agent-loop"
-import * as JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl"
-import AlwithSessionPersistence from "../src/persistence/alwith.ts"
 import { mountAgentLoopTestDependencies } from "@deepseek-ai/dsh-agent-loop-testkit"
+import { type GenerateOptions, LlmAdapter, type LlmResolvedModelInfo, type StreamChunk } from "@deepseek-ai/dsh-llm"
+import * as JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl"
+
 import * as Bridge from "../src/bridge.ts"
+import AlwithSessionPersistence from "../src/persistence/alwith.ts"
 
 export type ScriptEntry = StreamChunk[] | ((options: GenerateOptions) => StreamChunk[])
 
@@ -33,7 +34,7 @@ export class MockAdapter extends LlmAdapter {
   override listModels(provider: string) {
     return Promise.resolve([
       { provider, id: "mock", name: "Mock" },
-      { provider, id: "mock-pro", name: "Mock Pro" },
+      { provider, id: "mock-pro", name: "Mock Pro" }
     ])
   }
 
@@ -55,7 +56,7 @@ export function textResponse(text: string): StreamChunk[] {
     ...Array.from(text, (char): StreamChunk => ({ type: "text-delta", index: 0, text: char })),
     { type: "block-end", index: 0, block: { type: "text", text } },
     { type: "usage", usage: { inputTokens: 5, outputTokens: text.length } },
-    { type: "finish", reason: { kind: "stop" } },
+    { type: "finish", reason: { kind: "stop" } }
   ]
 }
 
@@ -66,7 +67,7 @@ export async function untilFrame(condition: () => boolean, timeoutMs = 1000): Pr
   const deadline = Date.now() + timeoutMs
   while (!condition()) {
     if (Date.now() > deadline) throw new Error("untilFrame: condition not met within timeout")
-    await new Promise(resolve => setImmediate(resolve))
+    await new Promise((resolve) => setImmediate(resolve))
   }
 }
 
@@ -104,33 +105,57 @@ export async function makeHarness(script: ScriptEntry[], options: HarnessOptions
     inject: [...Bridge.inject],
     apply: (inner: Context) => {
       Bridge.apply(inner, { provider: "mock", model: "mock", titleModel: options.titleModel, stream: agentStream })
-    },
+    }
   })
 
   const connection: ClientConnection = createClientApp()
-    .onNotification("session/update", context => {
+    .onNotification("session/update", (context) => {
       updates.push(context.params.update as CapturedUpdate)
     })
-    .onRequest("session/request_permission", context => {
+    .onRequest("session/request_permission", (context) => {
       permissionRequests.push(context.params)
       return { outcome: { outcome: "cancelled" as const } }
     })
     .connect(clientStream)
 
   const states = () =>
-    updates.filter(update => update.sessionUpdate === "state_update").map(update => ({ state: update.state, stopReason: update.stopReason }))
+    updates
+      .filter((update) => update.sessionUpdate === "state_update")
+      .map((update) => ({ state: update.state, stopReason: update.stopReason }))
   const initialize = () =>
-    connection.agent.request("initialize", { protocolVersion: 2, info: { name: "test-client", version: "0.0.0" }, capabilities: {} })
+    connection.agent.request("initialize", {
+      protocolVersion: 2,
+      info: { name: "test-client", version: "0.0.0" },
+      capabilities: {}
+    })
   const promptAndWait = async (params: PromptRequest) => {
     const start = updates.length
     const receipt = await connection.agent.request("session/prompt", params)
     await untilFrame(() => {
-      const inserted = updates.findIndex((update, index) => index >= start &&
-        (update.sessionUpdate === "user_message" || update.sessionUpdate === "user_message_chunk") &&
-        update.messageId === receipt.messageId)
-      return inserted >= start && updates.some((update, index) => index > inserted && update.sessionUpdate === "state_update" && update.state === "idle")
+      const inserted = updates.findIndex(
+        (update, index) =>
+          index >= start &&
+          (update.sessionUpdate === "user_message" || update.sessionUpdate === "user_message_chunk") &&
+          update.messageId === receipt.messageId
+      )
+      return (
+        inserted >= start &&
+        updates.some(
+          (update, index) => index > inserted && update.sessionUpdate === "state_update" && update.state === "idle"
+        )
+      )
     })
     return receipt
   }
-  return { ctx, adapter, promptAndWait, agent: connection.agent, updates, states, permissionRequests, initialize, dispose: () => ctx.fiber.dispose() }
+  return {
+    ctx,
+    adapter,
+    promptAndWait,
+    agent: connection.agent,
+    updates,
+    states,
+    permissionRequests,
+    initialize,
+    dispose: () => ctx.fiber.dispose()
+  }
 }

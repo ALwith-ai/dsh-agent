@@ -12,13 +12,14 @@
  */
 
 import { Context } from "@deepseek-ai/cordis"
+
 import {
   type HarnessPreset,
   type PermissionMode,
+  type PersistenceKind,
   type PluginOverrides,
   pluginRows,
-  resolvePlugins,
-  type PersistenceKind,
+  resolvePlugins
 } from "./plugins.ts"
 import type { PresetPackage } from "./preset-package.ts"
 
@@ -64,13 +65,15 @@ export async function composeRuntime(options: ComposeOptions = {}): Promise<Cont
     preset: typeof options.preset === "object" ? options.preset.manifest.extends : (options.preset ?? "standard"),
     ...(typeof options.preset === "object" ? { presetPackage: options.preset } : {}),
     piProviders: options.piProviders,
-    credentialsFile: options.credentialsFile,
+    credentialsFile: options.credentialsFile
   })
   const overrides = options.overrides ?? {}
   const packageDisabled = typeof options.preset === "object" ? (options.preset.manifest.disabled ?? []) : []
   const { mounted } = resolvePlugins(rows, {
     ...overrides,
-    ...(packageDisabled.length === 0 ? {} : { disabled: [...new Set([...(overrides.disabled ?? []), ...packageDisabled])] }),
+    ...(packageDisabled.length === 0
+      ? {}
+      : { disabled: [...new Set([...(overrides.disabled ?? []), ...packageDisabled])] })
   })
   const ctx = new Context()
   for (const entry of mounted) {
