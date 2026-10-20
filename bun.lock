@@ -5,7 +5,7 @@
     "": {
       "name": "@alwith/dsh-acp",
       "dependencies": {
-        "@agentclientprotocol/sdk": "1.9.0",
+        "@agentclientprotocol/sdk": "2.0.0",
         "@deepseek-ai/cordis": "4.0.5",
         "@deepseek-ai/cordis-plugin-group": "1.0.5",
         "@deepseek-ai/cordis-plugin-include": "1.0.10",
@@ -112,7 +112,7 @@
     "koffi",
   ],
   "packages": {
-    "@agentclientprotocol/sdk": ["@agentclientprotocol/sdk@1.9.0", "", { "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-saCOTPYBK1iqWqJFAYHXbg3+zCoFXyZZFoqQAwdTWkbrZZPpAETr80QOnYr2l+dzPwL0jpNhn3eDY8MoEIDbUA=="],
+    "@agentclientprotocol/sdk": ["@agentclientprotocol/sdk@2.0.0", "", { "peerDependencies": { "zod": "^3.25.76 || ^4.0.0" } }, "sha512-Za5gWOPQ44aBOdegDJZ+OjCAPn7POc0cw8BlFJQ1mmUY1OoUWxRi3+QZT4gdZnyEWgKXyfeGRb0Oo1ag9YkQ1w=="],
 
     "@anthropic-ai/sdk": ["@anthropic-ai/sdk@0.129.0", "", { "dependencies": { "json-schema-to-ts": "^3.1.1", "standardwebhooks": "^1.0.0" }, "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["zod"], "bin": { "anthropic-ai-sdk": "bin/cli" } }, "sha512-MH7LB20kNpGLUpPTe2OG5XvL/KhX8HUO9XyBaFjgFk6TLS4Xjt0VPIuMKywe7POKKPslX+QxSlVok9e+8kG5Nw=="],
 

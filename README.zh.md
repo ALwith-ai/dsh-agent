@@ -67,6 +67,6 @@ bun src/main.ts plugins set tool-web disabled    # 先校验再落盘
 
 PTC 宿主和子进程均运行 Bun。`src/ptc-bun-loader.ts` 使用 amaro 类型擦除和兼容 Bun 的继承管道流适配官方进程运行时，不需要 Node 可执行文件或旧 worker fork。文件隔离和运行时限仍生效；上游 V8 老生代堆限制在 Bun 下不生效。
 
-### ACP SDK 1.9 与运行时组合
+### ACP SDK 2.0 与运行时组合
 
-桥接使用 ACP SDK 1.9.0。所有预设都挂载当前工具和子代理 API 必需的工作目录服务。JSONL 持久化使用上游模块插件，保留其依赖注入元数据；PTC 通过显式 `launch` 配置让宿主和子进程均使用 Bun。Harness 包与 Cordis peer 依赖固定为同一套上游发布版本。
+桥接使用 ACP SDK 2.0.0 (`experimental/v2/unstable`)。所有预设都挂载当前工具和子代理 API 必需的工作目录服务。JSONL 持久化使用上游模块插件，保留其依赖注入元数据；PTC 通过显式 `launch` 配置让宿主和子进程均使用 Bun。Harness 包与 Cordis peer 依赖固定为同一套上游发布版本。

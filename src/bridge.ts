@@ -56,7 +56,7 @@ import {
   type ToolCallId,
   type UpdateSessionNotification,
   type Stream,
-} from "@agentclientprotocol/sdk/experimental/v2"
+} from "@agentclientprotocol/sdk/experimental/v2/unstable"
 import type { Agent } from "@deepseek-ai/dsh-agent"
 import { SessionId, type SessionEvent, type TurnEndReason } from "@deepseek-ai/dsh-session"
 // Side-effect type imports: declaration-merge the approval/request waterfall

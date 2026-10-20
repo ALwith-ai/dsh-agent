@@ -15,7 +15,7 @@ import {
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type Stream,
-} from "@agentclientprotocol/sdk/experimental/v2"
+} from "@agentclientprotocol/sdk/experimental/v2/unstable"
 import { ToolCallId, LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from "@deepseek-ai/dsh-llm"
 import { composeRuntime } from "../src/compose.ts"
 import * as Bridge from "../src/bridge.ts"

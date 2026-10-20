@@ -67,6 +67,6 @@ The entire Harness release set is pinned to 0.2.1-rc.2. DeepSeek API-key routing
 
 The PTC host and child both run Bun. `src/ptc-bun-loader.ts` adapts the official process runtime with amaro type stripping and Bun-compatible inherited-pipe streams. No Node executable or old worker fork is required. File confinement and elapsed deadlines remain enforced; the upstream V8 old-generation heap setting is not enforced by Bun.
 
-### ACP SDK 1.9 and runtime composition
+### ACP SDK 2.0 and runtime composition
 
-The bridge uses ACP SDK 1.9.0. Every preset mounts the working-directory service required by the current tool and subagent APIs. JSONL persistence uses the upstream module plugin, preserving its injection metadata; PTC uses the explicit `launch` configuration with Bun for both host and child. Harness packages and Cordis peers are pinned to the same upstream release set.
+The bridge uses ACP SDK 2.0.0 (`experimental/v2/unstable`). Every preset mounts the working-directory service required by the current tool and subagent APIs. JSONL persistence uses the upstream module plugin, preserving its injection metadata; PTC uses the explicit `launch` configuration with Bun for both host and child. Harness packages and Cordis peers are pinned to the same upstream release set.

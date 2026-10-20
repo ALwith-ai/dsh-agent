@@ -13,7 +13,7 @@ import {
   ndJsonStream,
   type ClientConnection,
   type Stream,
-} from "@agentclientprotocol/sdk/experimental/v2"
+} from "@agentclientprotocol/sdk/experimental/v2/unstable"
 import { composeRuntime } from "../src/compose.ts"
 import * as Bridge from "../src/bridge.ts"
 import { MockAdapter, textResponse, untilFrame, type CapturedUpdate } from "./harness.ts"

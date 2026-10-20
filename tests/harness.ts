@@ -9,7 +9,7 @@ import {
   type RequestPermissionRequest,
   type UpdateSessionNotification,
   type Stream,
-} from "@agentclientprotocol/sdk/experimental/v2"
+} from "@agentclientprotocol/sdk/experimental/v2/unstable"
 import { LlmAdapter, type GenerateOptions, type LlmResolvedModelInfo, type StreamChunk } from "@deepseek-ai/dsh-llm"
 import AgentLoop from "@deepseek-ai/dsh-agent-loop"
 import * as JsonlSessionPersistence from "@deepseek-ai/dsh-session-persistence-jsonl"
