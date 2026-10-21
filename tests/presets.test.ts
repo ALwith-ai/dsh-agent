@@ -12,7 +12,7 @@ async function toolNames(preset: "standard" | "minimal"): Promise<string[]> {
   const names = (ctx.tools as unknown as { schemas: (c: unknown) => Array<{ name: string }> })
     .schemas(ctx)
     .map((schema) => schema.name)
-    .sort()
+    .toSorted()
   await ctx.fiber.dispose()
   return names
 }

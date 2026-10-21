@@ -25,7 +25,7 @@ function parseFlags(argv: string[]): CliFlags {
   let root = defaultSessionsRoot()
   const positional: string[] = []
   for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index]!
+    const argument = argv[index]
     if (argument === "--root") {
       const value = argv[index + 1]
       if (value === undefined) throw new Error("--root requires a value")
@@ -63,7 +63,7 @@ export async function runSessionsCli(argv: string[]): Promise<void> {
       (await persistence.list()).map((snapshot) => snapshot.header)
     )
     const sessions = [...headers]
-      .sort((a, b) => b.createdAt - a.createdAt)
+      .toSorted((a, b) => b.createdAt - a.createdAt)
       .map((header) => ({
         id: header.id,
         createdAt: header.createdAt,

@@ -100,6 +100,7 @@
       "devDependencies": {
         "@deepseek-ai/dsh-agent-loop-testkit": "0.2.1-rc.2",
         "@deepseek-ai/dsh-llm-replay": "0.2.1-rc.2",
+        "@nyssance/ts7-lint": "^0.1.2",
         "@types/bun": "^1.4.3",
         "typescript": "7.0.2",
       },
@@ -425,6 +426,8 @@
     "@koromix/koffi-win32-x64": ["@koromix/koffi-win32-x64@3.1.1", "", { "os": "win32", "cpu": "x64" }, "sha512-KqHPmvj6QILhNyI/To8QSihHsijeVGIYYPBOUnXEpcnH2LuLbargY4Hd6dDeTN3Z90uUUxN+1FWz1UnhVzFOiA=="],
 
     "@mixmark-io/domino": ["@mixmark-io/domino@2.2.0", "", {}, "sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw=="],
+
+    "@nyssance/ts7-lint": ["@nyssance/ts7-lint@0.1.2", "", { "bin": { "ts7-lint": "src/index.ts" } }, "sha512-hPc3fU+gbRHHQwXOIZXlSXWpNEWjxKTqG/FVIib/BIvlf59NfUoYePXnIkKRbGkPEgoJ4zZlyrCLUgz9G1EkOw=="],
 
     "@protobufjs/aspromise": ["@protobufjs/aspromise@1.1.2", "", {}, "sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ=="],
 

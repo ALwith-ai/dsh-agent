@@ -49,10 +49,10 @@ function emit(event: Record<string, unknown>): void {
  */
 export async function composeCredentialPlane(credentialsFile: string): Promise<Context> {
   const ctx = new Context()
-  await ctx.plugin(LocalCredentialProvider, { path: credentialsFile, watch: false } as never)
+  await ctx.plugin(LocalCredentialProvider, { path: credentialsFile, watch: false })
   await ctx.plugin(AuthorizationService)
   await ctx.plugin(LlmRuntime)
-  await ctx.plugin(LlmPiAi, { providers: {} } as never)
+  await ctx.plugin(LlmPiAi, { providers: {} })
   return ctx
 }
 

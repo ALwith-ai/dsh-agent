@@ -15,6 +15,22 @@ import { decodeRecord, projectKey } from "../src/persistence/record.ts"
 import { makeHarness, textResponse, untilFrame } from "./harness.ts"
 import { meta, oneTurnLog, runPersistenceContract } from "./upstream/persistence-contract.ts"
 
+/** One parsed line of an ALwith record: CLI lines and `alwith` header/event/snapshot/request lines in one loose shape. */
+type RecordLine = {
+  type: string
+  kind: string
+  uuid: string
+  parentUuid: string | null
+  dsh: { header: unknown }
+  event: { type: string }
+  alwith?: { engine: string }
+  message: { content: unknown }
+  systemPrompt: { ref: string }
+  tools: { ref: string }
+  content: unknown
+  ref: string
+}
+
 const WORK = "/w"
 
 function recordPath(root: string, cwd: string | undefined, id: string): string {
@@ -68,7 +84,7 @@ describe("ALwith record shape", () => {
       const lines = (await readFile(recordPath(dir, WORK, id), "utf8"))
         .trim()
         .split("\n")
-        .map((line) => JSON.parse(line))
+        .map((line) => JSON.parse(line) as RecordLine)
 
       expect(lines[0]).toMatchObject({
         type: "alwith",
@@ -85,8 +101,8 @@ describe("ALwith record shape", () => {
         .map((line) => line.event.type)
       expect(events).toEqual(["turn/start", "user/message", "step/start", "assistant/message", "step/end", "turn/end"])
 
-      const user = lines.find((line) => line.type === "user")
-      const assistant = lines.find((line) => line.type === "assistant")
+      const user = lines.find((line) => line.type === "user")!
+      const assistant = lines.find((line) => line.type === "assistant")!
       expect(user).toMatchObject({
         sessionId: id,
         cwd: WORK,
@@ -157,12 +173,12 @@ describe("ALwith record shape", () => {
       const lines = (await readFile(recordPath(dir, WORK, id), "utf8"))
         .trim()
         .split("\n")
-        .map((line) => JSON.parse(line))
+        .map((line) => JSON.parse(line) as RecordLine)
       const snapshots = lines.filter((line) => line.kind === "snapshot")
       const requests = lines.filter((line) => line.kind === "request")
       expect(snapshots).toHaveLength(2)
       expect(requests).toHaveLength(2)
-      expect(requests[0].systemPrompt.ref).toBe(snapshots.find((s) => s.content === "be brief").ref)
+      expect(requests[0].systemPrompt.ref).toBe(snapshots.find((s) => s.content === "be brief")!.ref)
       expect(requests[1].systemPrompt.ref).toBe(requests[0].systemPrompt.ref)
       expect(requests[0].tools.ref).toBe(requests[1].tools.ref)
       await fiber.dispose()
@@ -337,7 +353,7 @@ describe("records written by the ALwith CLI", () => {
         await h.ctx.sessions.flush(h.ctx.sessions.get(SessionId(id))!)
 
         // The model saw the CLI history: its request carries the reconstructed messages.
-        const request = h.adapter.requests[0]!
+        const request = h.adapter.requests[0]
         const roles = request.messages.map((message) => message.role)
         expect(roles.slice(0, 2)).toEqual(["user", "assistant"])
         expect(JSON.stringify(request.messages)).toContain("It says hello.")
@@ -346,16 +362,16 @@ describe("records written by the ALwith CLI", () => {
         const lines = (await readFile(path, "utf8"))
           .trim()
           .split("\n")
-          .map((line) => JSON.parse(line))
+          .map((line) => JSON.parse(line) as RecordLine)
         expect(lines[0].type).toBe("user") // CLI lines untouched, no header inserted
         const appended = lines.slice(5)
         expect(
           appended.some((line) => line.type === "alwith" && line.kind === "event" && line.event.type === "user/message")
         ).toBe(true)
-        const dshUser = appended.find((line) => line.type === "user" && line.alwith?.engine === "dsh")
+        const dshUser = appended.find((line) => line.type === "user" && line.alwith?.engine === "dsh")!
         expect(dshUser.parentUuid).toBe("a2")
         expect(dshUser.message.content).toBe("go on")
-        const dshAssistant = appended.find((line) => line.type === "assistant" && line.alwith?.engine === "dsh")
+        const dshAssistant = appended.find((line) => line.type === "assistant" && line.alwith?.engine === "dsh")!
         expect(dshAssistant.message.content).toEqual([{ type: "text", text: "continuing" }])
       } finally {
         await h.dispose()
@@ -368,7 +384,7 @@ describe("records written by the ALwith CLI", () => {
         await h2.agent.request("session/resume", { sessionId: id, cwd: WORK })
         await h2.agent.request("session/prompt", { sessionId: id, prompt: [{ type: "text", text: "and?" }] })
         await untilFrame(() => h2.states().at(-1)?.state === "idle")
-        const request = h2.adapter.requests[0]!
+        const request = h2.adapter.requests[0]
         const text = JSON.stringify(request.messages)
         expect(text).toContain("It says hello.")
         expect(text).toContain("continuing")
@@ -395,7 +411,9 @@ describe("records written by the ALwith CLI", () => {
         await untilFrame(() => h.states().at(-1)?.state === "idle")
         await h.ctx.sessions.flush(h.ctx.sessions.get(SessionId(created.sessionId))!)
         const listed = await h.agent.request("session/list", { cwd: WORK })
-        expect(listed.sessions.map((session) => session.sessionId).sort()).toEqual([cliId, created.sessionId].sort())
+        expect(listed.sessions.map((session) => session.sessionId).toSorted()).toEqual(
+          [cliId, created.sessionId].toSorted()
+        )
       } finally {
         await h.dispose()
       }
@@ -488,7 +506,7 @@ describe("session/resume cwd spelling", () => {
             cwd: join(real, "elsewhere"),
             replayFrom: null
           })
-        ).rejects.toMatchObject({ message: expect.stringContaining("cwd mismatch") })
+        ).rejects.toMatchObject({ message: expect.stringContaining("cwd mismatch") as unknown })
       } finally {
         await h.dispose()
       }

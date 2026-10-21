@@ -44,7 +44,7 @@ async function toolNames(dir: string): Promise<string[]> {
     return (ctx.tools as unknown as { schemas: (c: unknown) => Array<{ name: string }> })
       .schemas(ctx)
       .map((schema) => schema.name)
-      .sort()
+      .toSorted()
   } finally {
     await ctx.fiber.dispose()
   }

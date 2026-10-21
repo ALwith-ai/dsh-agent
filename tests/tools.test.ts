@@ -27,6 +27,7 @@ import {
 
 import * as Bridge from "../src/bridge.ts"
 import { composeRuntime } from "../src/compose.ts"
+import { scriptedStream } from "./harness"
 import { type CapturedUpdate, textResponse, untilFrame } from "./harness.ts"
 
 class MockAdapter extends LlmAdapter {
@@ -40,14 +41,13 @@ class MockAdapter extends LlmAdapter {
     return Promise.resolve({ provider, id: model, name: model })
   }
 
-  async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
-    this.requests.push(options)
-    const entry = this.script.shift()
-    if (entry === undefined) throw new Error("MockAdapter: script exhausted")
-    for (const chunk of entry) {
-      if (options.signal?.aborted) throw new Error("aborted")
-      yield chunk
-    }
+  stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    return scriptedStream(options.signal, () => {
+      this.requests.push(options)
+      const entry = this.script.shift()
+      if (entry === undefined) throw new Error("MockAdapter: script exhausted")
+      return entry
+    })
   }
 }
 

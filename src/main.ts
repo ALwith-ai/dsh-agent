@@ -26,7 +26,7 @@ import { loadPresetPackage } from "./preset-package.ts"
 const subcommand = process.argv[2]
 if (subcommand === "plugins" || subcommand === "sessions" || subcommand === "oauth") {
   try {
-    if (subcommand === "plugins") await runPluginsCli(process.argv.slice(3))
+    if (subcommand === "plugins") runPluginsCli(process.argv.slice(3))
     else if (subcommand === "oauth") await (await import("./oauth.ts")).runOauthCli(process.argv.slice(3))
     else await (await import("./sessions-cli.ts")).runSessionsCli(process.argv.slice(3))
   } catch (error) {

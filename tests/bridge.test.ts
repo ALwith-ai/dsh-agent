@@ -80,7 +80,7 @@ describe("dsh-agent bridge", () => {
     // Notifications are asynchronous; the idle frame is last on the wire, so once
     // it lands every chunk before it has landed too.
     await untilFrame(() => h.states().at(-1)?.state === "idle")
-    expect(h.updates.filter((update) => update.sessionUpdate === "user_message")).toEqual([
+    expect(h.updates.filter((update) => update.sessionUpdate === "user_message") as unknown).toEqual([
       expect.objectContaining({ messageId: response.messageId, content: [{ type: "text", text: "hi" }] })
     ])
     const chunks = h.updates.filter((update) => update.sessionUpdate === "agent_message_chunk")

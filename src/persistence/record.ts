@@ -75,7 +75,7 @@ function simpleHash(value: string): string {
   let hash = 0
   for (let index = 0; index < value.length; index += 1) {
     hash = (hash << 5) - hash + value.charCodeAt(index)
-    hash |= 0
+    hash = Math.trunc(hash)
   }
   return Math.abs(hash).toString(36)
 }
@@ -86,7 +86,7 @@ export const NO_CWD_PROJECT = "_no-cwd"
 /** Project key: byte-identical to the ALwith CLI's `sanitizePath` (non-alphanumerics → `-`). */
 export function projectKey(cwd: string | undefined): string {
   if (cwd === undefined) return NO_CWD_PROJECT
-  const sanitized = cwd.replace(/[^a-zA-Z0-9]/g, "-")
+  const sanitized = cwd.replaceAll(/[^a-zA-Z0-9]/g, "-")
   if (sanitized.length <= MAX_SANITIZED_LENGTH) return sanitized
   return `${sanitized.slice(0, MAX_SANITIZED_LENGTH)}-${simpleHash(cwd)}`
 }
@@ -463,7 +463,7 @@ class Reconstruction {
   constructor(private readonly recordId: SessionId) {}
 
   private push(event: NewEvent): void {
-    this.events.push({ ...event, seq: SessionSeq(this.events.length) } as SessionEvent)
+    this.events.push({ ...event, seq: SessionSeq(this.events.length) })
   }
 
   private stamp(line: RecordLine): number {
@@ -773,7 +773,7 @@ export function decodeRecord(buffer: Buffer, recordId: SessionId, fallbackCwd?: 
     if (entry.oldSeq !== undefined) remap.set(entry.oldSeq, index)
   })
   const events = collected.map((entry, index) => {
-    const event = { ...entry.event, seq: SessionSeq(index) } as SessionEvent
+    const event = { ...entry.event, seq: SessionSeq(index) }
     const refs = (event as { sourceEventSeqs?: number[] }).sourceEventSeqs
     if (refs !== undefined) {
       const mapped = refs.map((seq) => remap.get(seq)).filter((seq): seq is number => seq !== undefined)

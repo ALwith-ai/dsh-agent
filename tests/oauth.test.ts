@@ -17,10 +17,10 @@ function tempFile(): string {
 async function captureCli(argv: string[]): Promise<string[]> {
   const lines: string[] = []
   const original = process.stdout.write.bind(process.stdout)
-  process.stdout.write = ((chunk: string | Uint8Array) => {
+  process.stdout.write = (chunk: string | Uint8Array) => {
     lines.push(chunk.toString())
     return true
-  }) as typeof process.stdout.write
+  }
   try {
     await runOauthCli(argv)
   } finally {
@@ -36,10 +36,12 @@ describe("credential plane", () => {
     try {
       const ctx = await composeCredentialPlane(file)
       try {
-        await ctx.credentials.modifyRecord(credentialKey("llm-pi-ai", "anthropic"), async () => ({
-          kind: "grant",
-          payload: { type: "oauth", refresh: "r1", access: "a1", expires: 123 }
-        }))
+        await ctx.credentials.modifyRecord(credentialKey("llm-pi-ai", "anthropic"), () =>
+          Promise.resolve({
+            kind: "grant",
+            payload: { type: "oauth", refresh: "r1", access: "a1", expires: 123 }
+          })
+        )
       } finally {
         await ctx.fiber.dispose()
       }
@@ -131,16 +133,16 @@ describe("host login interaction", () => {
   test("a notice with a page becomes the host's auth_url event", () => {
     const lines: string[] = []
     const original = process.stdout.write.bind(process.stdout)
-    process.stdout.write = ((chunk: string | Uint8Array) => {
+    process.stdout.write = (chunk: string | Uint8Array) => {
       lines.push(chunk.toString())
       return true
-    }) as typeof process.stdout.write
+    }
     try {
       hostLoginInteraction().notify({ message: "Open this page", url: "https://example.test/authorize" })
     } finally {
       process.stdout.write = original
     }
-    expect(JSON.parse(lines[0]!)).toEqual({
+    expect(JSON.parse(lines[0])).toEqual({
       type: "auth_url",
       url: "https://example.test/authorize",
       instructions: "Open this page"

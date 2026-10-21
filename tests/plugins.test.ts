@@ -20,7 +20,7 @@ async function toolNames(overrides: PluginOverrides): Promise<string[]> {
   const names = (ctx.tools as unknown as { schemas: (c: unknown) => Array<{ name: string }> })
     .schemas(ctx)
     .map((schema) => schema.name)
-    .sort()
+    .toSorted()
   await ctx.fiber.dispose()
   return names
 }
@@ -158,10 +158,10 @@ describe("plugins CLI", () => {
   function captureStdout(): { lines: string[]; restore: () => void } {
     const lines: string[] = []
     const original = process.stdout.write.bind(process.stdout)
-    process.stdout.write = ((chunk: string | Uint8Array) => {
+    process.stdout.write = (chunk: string | Uint8Array) => {
       lines.push(chunk.toString())
       return true
-    }) as typeof process.stdout.write
+    }
     return {
       lines,
       restore: () => {
@@ -170,45 +170,45 @@ describe("plugins CLI", () => {
     }
   }
 
-  test("set disabled → file written → list reflects it → set enabled restores", async () => {
+  test("set disabled → file written → list reflects it → set enabled restores", () => {
     const file = join(mkdtempSync(join(tmpdir(), "dsh-agent-plugins-")), "plugins.json")
     const stdout = captureStdout()
     try {
-      await runPluginsCli(["set", "tool-web", "disabled", "--file", file, "--preset", "standard"])
+      runPluginsCli(["set", "tool-web", "disabled", "--file", file, "--preset", "standard"])
       expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({
         disabled: ["tool-web"]
       })
-      await runPluginsCli(["list", "--file", file, "--preset", "standard"])
+      runPluginsCli(["list", "--file", file, "--preset", "standard"])
       const listed = JSON.parse(stdout.lines.at(-1)!) as {
         plugins: Array<{ id: string; enabled: boolean }>
       }
       expect(listed.plugins.find((row) => row.id === "tool-web")?.enabled).toBe(false)
-      await runPluginsCli(["set", "tool-web", "enabled", "--file", file, "--preset", "standard"])
+      runPluginsCli(["set", "tool-web", "enabled", "--file", file, "--preset", "standard"])
       expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ disabled: [] })
     } finally {
       stdout.restore()
     }
   })
 
-  test("set validates before writing: core row and broken dependency both leave the file untouched", async () => {
+  test("set validates before writing: core row and broken dependency both leave the file untouched", () => {
     const file = join(mkdtempSync(join(tmpdir(), "dsh-agent-plugins-")), "plugins.json")
     const stdout = captureStdout()
     try {
-      await expect(runPluginsCli(["set", "session", "disabled", "--file", file])).rejects.toThrow("core row")
+      expect(() => runPluginsCli(["set", "session", "disabled", "--file", file])).toThrow("core row")
       // "web" alone breaks tool-web's requires in the standard preset.
-      await expect(runPluginsCli(["set", "web", "disabled", "--file", file])).rejects.toThrow('requires "web"')
-      await expect(runPluginsCli(["set", "nope", "disabled", "--file", file])).rejects.toThrow("unknown plugin id")
+      expect(() => runPluginsCli(["set", "web", "disabled", "--file", file])).toThrow('requires "web"')
+      expect(() => runPluginsCli(["set", "nope", "disabled", "--file", file])).toThrow("unknown plugin id")
       expect(() => readFileSync(file, "utf8")).toThrow() // never created
     } finally {
       stdout.restore()
     }
   })
 
-  test("configure validates and atomically patches curated fields", async () => {
+  test("configure validates and atomically patches curated fields", () => {
     const file = join(mkdtempSync(join(tmpdir(), "dsh-agent-plugins-")), "plugins.json")
     const stdout = captureStdout()
     try {
-      await runPluginsCli([
+      runPluginsCli([
         "configure",
         "bash-sandbox",
         JSON.stringify({ timeoutMs: 90000, maxOutputBytes: 128000 }),
@@ -221,21 +221,21 @@ describe("plugins CLI", () => {
         }
       })
 
-      await runPluginsCli(["configure", "bash-sandbox", JSON.stringify({ timeoutMs: null }), "--file", file])
+      runPluginsCli(["configure", "bash-sandbox", JSON.stringify({ timeoutMs: null }), "--file", file])
       expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({
         config: { "bash-sandbox": { maxOutputBytes: 128000 } }
       })
 
       const before = readFileSync(file, "utf8")
-      await expect(
+      expect(() =>
         runPluginsCli(["configure", "bash-sandbox", JSON.stringify({ timeoutMs: 0 }), "--file", file])
-      ).rejects.toThrow("integer >= 1")
-      await expect(
+      ).toThrow("integer >= 1")
+      expect(() =>
         runPluginsCli(["configure", "web-search-deepseek", JSON.stringify({ baseURL: "not-a-url" }), "--file", file])
-      ).rejects.toThrow("absolute URL")
-      await expect(
-        runPluginsCli(["configure", "session", JSON.stringify({ anything: 1 }), "--file", file])
-      ).rejects.toThrow("no desktop-configurable fields")
+      ).toThrow("absolute URL")
+      expect(() => runPluginsCli(["configure", "session", JSON.stringify({ anything: 1 }), "--file", file])).toThrow(
+        "no desktop-configurable fields"
+      )
       expect(readFileSync(file, "utf8")).toBe(before)
     } finally {
       stdout.restore()

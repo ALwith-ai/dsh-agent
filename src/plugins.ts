@@ -19,7 +19,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { Context } from "@deepseek-ai/cordis"
+import type { Context } from "@deepseek-ai/cordis"
 import AgentRegistry from "@deepseek-ai/dsh-agent"
 import AgentLoop from "@deepseek-ai/dsh-agent-loop"
 import AuthorizationService from "@deepseek-ai/dsh-authorization"
@@ -238,7 +238,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "system-prompt",
       "@deepseek-ai/dsh-system-prompt",
       "System prompt assembly (persona + tool sections)",
-      async (ctx, config) => ctx.plugin(SystemPrompt, config as never),
+      async (ctx, config) => ctx.plugin(SystemPrompt, config),
       options.presetPackage?.manifest.personaPrefix !== undefined
         ? { personaPrefix: options.presetPackage.manifest.personaPrefix }
         : preset === "anchored"
@@ -253,7 +253,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "tools",
       "@deepseek-ai/dsh-tools",
       "Tool runtime: schema registry, dispatch, presentation mode",
-      async (ctx, config) => ctx.plugin(ToolRuntime, config as never),
+      async (ctx, config) => ctx.plugin(ToolRuntime, config),
       preset === "code" ? { mode: "ptc" } : undefined
     ),
     core("agent", "@deepseek-ai/dsh-agent", "Agent registry (definitions and scopes)", async (ctx, config) =>
@@ -263,7 +263,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "agent-loop",
       "@deepseek-ai/dsh-agent-loop",
       "The turn loop: prompt → model → tools → settlement",
-      async (ctx, config) => ctx.plugin(AgentLoop, config as never),
+      async (ctx, config) => ctx.plugin(AgentLoop, config),
       { agents: [], maxParallelToolCalls: 10 },
       [{ key: "maxParallelToolCalls", type: "number", minimum: 1 }]
     ),
@@ -271,7 +271,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "llm-deepseek",
       "@deepseek-ai/dsh-llm-deepseek-api-key",
       "DeepSeek model adapter ($DEEPSEEK_API_KEY)",
-      async (ctx, config) => ctx.plugin(LlmDeepseek, config as never)
+      async (ctx, config) => ctx.plugin(LlmDeepseek, config)
     )
   ]
   if (options.credentialsFile !== undefined) {
@@ -285,7 +285,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
         "credentials-local",
         "@deepseek-ai/dsh-credentials-local",
         "Local credential store (subscription grants, API keys)",
-        async (ctx, config) => ctx.plugin(LocalCredentialProvider, config as never),
+        async (ctx, config) => ctx.plugin(LocalCredentialProvider, config),
         { path: options.credentialsFile }
       ),
       core(
@@ -302,7 +302,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
         "llm-pi-ai",
         "@deepseek-ai/dsh-llm-pi-ai",
         "Multi-provider adapter (pi-ai catalog: openai / anthropic / google / …)",
-        async (ctx, config) => ctx.plugin(LlmPiAi, config as never),
+        async (ctx, config) => ctx.plugin(LlmPiAi, config),
         { providers: options.piProviders }
       )
     )
@@ -350,20 +350,20 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "sandbox-local",
       "@deepseek-ai/dsh-sandbox-local",
       "OS sandbox provider (seatbelt on macOS)",
-      async (ctx, config) => ctx.plugin(LocalSandboxProvider, config as never)
+      async (ctx, config) => ctx.plugin(LocalSandboxProvider, config)
     ),
     core(
       "sandbox-policy",
       "@deepseek-ai/dsh-sandbox-policy",
       "Sandbox policy (mode + workspace root)",
-      async (ctx, config) => ctx.plugin(SandboxPolicyService, config as never),
+      async (ctx, config) => ctx.plugin(SandboxPolicyService, config),
       { mode: permissionMode, workspaceRoot }
     ),
     core(
       "bash-sandbox",
       "@deepseek-ai/dsh-bash-sandbox",
       "Sandboxed bash executor",
-      async (ctx, config) => ctx.plugin(SandboxBashExecutor, config as never),
+      async (ctx, config) => ctx.plugin(SandboxBashExecutor, config),
       { timeoutMs: 60000, maxOutputBytes: 64000 },
       [
         { key: "timeoutMs", type: "number", minimum: 1 },
@@ -371,20 +371,20 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       ]
     ),
     core("fs-sandbox", "@deepseek-ai/dsh-fs-sandbox", "Sandbox-policied filesystem service", async (ctx, config) =>
-      ctx.plugin(SandboxedFileSystem, config as never)
+      ctx.plugin(SandboxedFileSystem, config)
     ),
     core(
       "working-directory",
       "@deepseek-ai/dsh-working-directory",
       "Session working directory for tools and subagents",
-      async (ctx, config) => ctx.plugin(WorkingDirectoryService, config as never),
+      async (ctx, config) => ctx.plugin(WorkingDirectoryService, config),
       { defaultDirectory: options.workspaceRoot }
     ),
     core("jobs-local", "@deepseek-ai/dsh-jobs-local", "Local background job registry", async (ctx, config) =>
-      ctx.plugin(LocalJobRegistry, config as never)
+      ctx.plugin(LocalJobRegistry, config)
     ),
     core("shell-env", "@deepseek-ai/dsh-shell-env", "Shell environment capture for subprocesses", async (ctx, config) =>
-      ctx.plugin(ShellEnv, config as never)
+      ctx.plugin(ShellEnv, config)
     ),
     core(
       "fs-observation-policy",
@@ -398,14 +398,14 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "user-approval",
       "@deepseek-ai/dsh-user-approval",
       "One-shot escalation approvals (bridged over ACP)",
-      async (ctx, config) => ctx.plugin(ApprovalService, config as never),
+      async (ctx, config) => ctx.plugin(ApprovalService, config),
       { policy: permissionMode === "danger-full-access" ? "never" : "ask" }
     ),
     core(
       "permission-presets",
       "@deepseek-ai/dsh-permission-presets",
       "Named permission presets (sandbox × approval)",
-      async (ctx, config) => ctx.plugin(PermissionPresetService, config as never),
+      async (ctx, config) => ctx.plugin(PermissionPresetService, config),
       {
         presets: {
           "read-only": { sandbox: "read-only", approval: "ask" },
@@ -434,7 +434,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "compaction-basic",
       "@deepseek-ai/dsh-compaction-basic",
       "Automatic context compaction (pressure + overflow recovery)",
-      async (ctx, config) => ctx.plugin(BasicCompactionEngine, config as never)
+      async (ctx, config) => ctx.plugin(BasicCompactionEngine, config)
     ),
     core(
       "command-compact",
@@ -446,13 +446,13 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "compaction-tool-result-pruner",
       "@deepseek-ai/dsh-compaction-tool-result-pruner",
       "Trims oversized tool results before the model sees them",
-      async (ctx, config) => ctx.plugin(ToolResultPruner, config as never),
+      async (ctx, config) => ctx.plugin(ToolResultPruner, config),
       { thresholdChars: 8192, headChars: 4096, tailChars: 1024 }
     ),
     // Delegation host plane: the subagent registry and its in-process backends.
     // The model-facing delegation tools are preset rows below.
     core("subagent", "@deepseek-ai/dsh-subagent", "Subagent registry (delegated child agents)", async (ctx, config) =>
-      ctx.plugin(SubagentRuntime, config as never)
+      ctx.plugin(SubagentRuntime, config)
     ),
     core(
       "subagent-spawn-in-process",
@@ -478,7 +478,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "terminal-bash",
       "@deepseek-ai/dsh-terminal-bash",
       "Bash over the persistent terminal",
-      async (ctx, config) => ctx.plugin(TerminalBash, config as never),
+      async (ctx, config) => ctx.plugin(TerminalBash, config),
       undefined,
       ["terminal"]
     ),
@@ -486,7 +486,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "tool-bash-persistent",
       "@deepseek-ai/dsh-tool-bash-persistent",
       "bash tool (persistent shell)",
-      async (ctx, config) => ctx.plugin(ToolBashPersistent, config as never),
+      async (ctx, config) => ctx.plugin(ToolBashPersistent, config),
       undefined,
       ["terminal", "terminal-bash"]
     ),
@@ -494,13 +494,13 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "tool-str-replace-editor",
       "@deepseek-ai/dsh-tool-str-replace-editor",
       "str_replace_editor tool (view/create/str_replace)",
-      async (ctx, config) => ctx.plugin(ToolStrReplaceEditor, config as never),
+      async (ctx, config) => ctx.plugin(ToolStrReplaceEditor, config),
       { maxOutputChars: 16000 }
     )
   ]
   const codingTools: PluginRow[] = [
     tool("tool-fs", "@deepseek-ai/dsh-tool-fs", "read / write / edit file tools", async (ctx, config) =>
-      ctx.plugin(ToolFs, config as never)
+      ctx.plugin(ToolFs, config)
     ),
     tool(
       "tool-fs-search",
@@ -522,14 +522,14 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "web",
       "@deepseek-ai/dsh-web",
       "Web runtime (search provider registry)",
-      async (ctx, config) => ctx.plugin(WebRuntime, config as never),
+      async (ctx, config) => ctx.plugin(WebRuntime, config),
       { searchProvider: "deepseek-official" }
     ),
     tool(
       "web-search-deepseek",
       "@deepseek-ai/dsh-web-search-deepseek",
       "DeepSeek official web search provider",
-      async (ctx, config) => ctx.plugin(WebSearchDeepseek, config as never),
+      async (ctx, config) => ctx.plugin(WebSearchDeepseek, config),
       {
         apiKeyEnv: "DEEPSEEK_API_KEY",
         baseURL: "https://api.deepseek.com/anthropic/v1",
@@ -545,7 +545,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       "tool-web",
       "@deepseek-ai/dsh-tool-web",
       "web_search tool",
-      async (ctx, config) => ctx.plugin(ToolWeb, config as never),
+      async (ctx, config) => ctx.plugin(ToolWeb, config),
       { fetch: false, searchTimeoutMs: 60000 },
       ["web", "web-search-deepseek"]
     )
@@ -566,7 +566,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
         "anchored-tool-bootstrap",
         "dsh-liangshen (vendored)",
         "Anchored two-phase tool bootstrap",
-        async (ctx, config) => ctx.plugin(AnchoredToolBootstrap, config as never),
+        async (ctx, config) => ctx.plugin(AnchoredToolBootstrap, config),
         {
           shellTools: ["bash"],
           commonTools: ["str_replace_editor"],
@@ -584,7 +584,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
     // standard, code, cordis share the coding-agent tool surface.
     rows.push(
       tool("tool-bash", "@deepseek-ai/dsh-tool-bash", "bash tool (ephemeral, sandboxed)", async (ctx, config) =>
-        ctx.plugin(ToolBash, config as never)
+        ctx.plugin(ToolBash, config)
       ),
       ...codingTools,
       // Delegation tools (dsh-base rows): continuable spawn children plus the
@@ -624,7 +624,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
           "ptc-runtime-bun",
           "@deepseek-ai/dsh-ptc-runtime-node",
           "PTC process runtime on Bun (run_code)",
-          async (ctx, config) => ctx.plugin(BunPtcRuntime, config as never)
+          async (ctx, config) => ctx.plugin(BunPtcRuntime, config)
         )
       )
     }
@@ -635,7 +635,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
           "cordis-host-runner",
           "@deepseek-ai/dsh-cordis-host-runner",
           "Host registry for Cordis runtime inspection",
-          async (ctx, config) => ctx.plugin(CordisHostRunner, config as never)
+          async (ctx, config) => ctx.plugin(CordisHostRunner, config)
         ),
         tool(
           "cordis-inspect-providers",
@@ -657,13 +657,13 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
         // dsh's shipped cordis preset): registry + filesystem provider over
         // the bundled skills/ dir + the skill tool the model calls.
         tool("skill", "@deepseek-ai/dsh-skill", "Skill registry (session skill catalog)", async (ctx, config) =>
-          ctx.plugin(SkillRegistry, config as never)
+          ctx.plugin(SkillRegistry, config)
         ),
         tool(
           "skill-filesystem",
           "@deepseek-ai/dsh-skill-filesystem",
           "Filesystem skill provider (bundled skills/)",
-          async (ctx, config) => ctx.plugin(SkillFilesystem, config as never),
+          async (ctx, config) => ctx.plugin(SkillFilesystem, config),
           { customSkillDirs: [BUNDLED_SKILLS_DIR] },
           ["skill"]
         ),
@@ -671,7 +671,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
           "tool-skill",
           "@deepseek-ai/dsh-tool-skill",
           "skill tool (load bundled skill instructions)",
-          async (ctx, config) => ctx.plugin(ToolSkill, config as never),
+          async (ctx, config) => ctx.plugin(ToolSkill, config),
           undefined,
           ["skill"]
         )
@@ -690,13 +690,13 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
       } else {
         rows.push(
           tool("skill", "@deepseek-ai/dsh-skill", "Skill registry (session skill catalog)", async (ctx, config) =>
-            ctx.plugin(SkillRegistry, config as never)
+            ctx.plugin(SkillRegistry, config)
           ),
           tool(
             "skill-filesystem",
             "@deepseek-ai/dsh-skill-filesystem",
             `Filesystem skill provider (${pkg.manifest.name} preset skills)`,
-            async (ctx, config) => ctx.plugin(SkillFilesystem, config as never),
+            async (ctx, config) => ctx.plugin(SkillFilesystem, config),
             { customSkillDirs: [pkg.manifest.skillsDir] },
             ["skill"]
           ),
@@ -704,7 +704,7 @@ export function pluginRows(options: ResolvedComposeOptions): PluginRow[] {
             "tool-skill",
             "@deepseek-ai/dsh-tool-skill",
             "skill tool (load skill instructions)",
-            async (ctx, config) => ctx.plugin(ToolSkill, config as never),
+            async (ctx, config) => ctx.plugin(ToolSkill, config),
             undefined,
             ["skill"]
           )
@@ -822,11 +822,11 @@ export function resolvePlugins(rows: PluginRow[], overrides: PluginOverrides): R
   for (const row of rows) known.add(row.id)
   for (const id of overrides.disabled ?? []) {
     if (!known.has(id))
-      throw new Error(`unknown plugin id "${id}" in overrides (known: ${[...known].sort().join(", ")})`)
+      throw new Error(`unknown plugin id "${id}" in overrides (known: ${[...known].toSorted().join(", ")})`)
   }
   for (const id of Object.keys(overrides.config ?? {})) {
     if (!known.has(id))
-      throw new Error(`unknown plugin id "${id}" in overrides config (known: ${[...known].sort().join(", ")})`)
+      throw new Error(`unknown plugin id "${id}" in overrides config (known: ${[...known].toSorted().join(", ")})`)
   }
   const disabled = new Set(overrides.disabled ?? [])
   for (const row of rows) {

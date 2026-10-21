@@ -38,15 +38,13 @@ export class MockAdapter extends LlmAdapter {
     ])
   }
 
-  async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
-    this.requests.push(options)
-    const entry = this.script.shift()
-    if (entry === undefined) throw new Error("MockAdapter: script exhausted")
-    const chunks = typeof entry === "function" ? entry(options) : entry
-    for (const chunk of chunks) {
-      if (options.signal?.aborted) throw new Error("aborted")
-      yield chunk
-    }
+  stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    return scriptedStream(options.signal, () => {
+      this.requests.push(options)
+      const entry = this.script.shift()
+      if (entry === undefined) throw new Error("MockAdapter: script exhausted")
+      return typeof entry === "function" ? entry(options) : entry
+    })
   }
 }
 
@@ -157,5 +155,29 @@ export async function makeHarness(script: ScriptEntry[], options: HarnessOptions
     permissionRequests,
     initialize,
     dispose: () => ctx.fiber.dispose()
+  }
+}
+
+/** A stream of scripted chunks that, like a real adapter, starts on the first read and stops once the signal aborts. */
+export function scriptedStream(
+  signal: AbortSignal | undefined,
+  start: () => Iterable<StreamChunk>
+): AsyncIterable<StreamChunk> {
+  return {
+    [Symbol.asyncIterator]: () => {
+      let chunks: Iterator<StreamChunk> | undefined
+      return {
+        next: () => {
+          try {
+            chunks ??= start()[Symbol.iterator]()
+            const result = chunks.next()
+            if (!result.done && signal?.aborted) throw new Error("aborted")
+            return Promise.resolve(result)
+          } catch (error) {
+            return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+          }
+        }
+      }
+    }
   }
 }

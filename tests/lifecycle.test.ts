@@ -10,7 +10,7 @@ import { makeHarness, textResponse } from "./harness.ts"
 
 test("a failed model catalog during session/new releases its agent", async () => {
   const h = await makeHarness([])
-  h.adapter.listModels = async () => {
+  h.adapter.listModels = () => {
     throw new Error("catalog unavailable")
   }
   try {

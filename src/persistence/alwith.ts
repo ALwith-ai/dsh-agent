@@ -283,7 +283,7 @@ class AlwithSessionHandle implements SessionHandle {
         try {
           await this.persistContiguous(materializeAppendBatch(batch))
         } catch (error) {
-          this.buffered = batch.concat(this.buffered)
+          this.buffered = [...batch, ...this.buffered]
           this.drainPaused = true
           throw error
         }
@@ -777,11 +777,11 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
 
   private newest<T extends { path: string; mtimeMs: number }>(id: SessionId, candidates: readonly T[]): T | undefined {
     if (candidates.length === 0) return undefined
-    const sorted = [...candidates].sort((a, b) => b.mtimeMs - a.mtimeMs)
+    const sorted = [...candidates].toSorted((a, b) => b.mtimeMs - a.mtimeMs)
     const [winner, ...shadowed] = sorted
     if (shadowed.length > 0) {
       this.ctx.logger.warn(
-        `${this.name}: record "${id}" exists under ${sorted.length} project directories; using the most recently written ${winner!.path}, shadowing ${shadowed.map((entry) => entry.path).join(", ")}`
+        `${this.name}: record "${id}" exists under ${sorted.length} project directories; using the most recently written ${winner.path}, shadowing ${shadowed.map((entry) => entry.path).join(", ")}`
       )
     }
     return winner
@@ -799,7 +799,7 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
     return entries
       .filter((entry) => entry.isDirectory())
       .map((entry) => join(this.projectsDir, entry.name))
-      .sort()
+      .toSorted()
   }
 
   private async listArtifacts(signal?: AbortSignal): Promise<Array<{ header: SessionHeader; path: string }>> {
@@ -813,7 +813,7 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
         if (isENOENT(error)) continue
         throw error
       }
-      for (const entry of entries.sort()) {
+      for (const entry of entries.toSorted()) {
         if (!entry.endsWith(".jsonl")) continue
         signal?.throwIfAborted()
         const path = join(project, entry)

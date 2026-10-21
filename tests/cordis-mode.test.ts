@@ -45,12 +45,12 @@ describe("cordis preset (creator)", () => {
     const script: ScriptEntry[] = [
       toolCall("call-1", "cordis_inspect_list", {}),
       (options) => {
-        const receipt = JSON.parse(lastToolResultText(options))
+        const receipt = JSON.parse(lastToolResultText(options)) as { providers: unknown }
         expect(receipt.providers).toEqual(expect.arrayContaining([expect.objectContaining({ id: "Tool" })]))
         return toolCall("call-2", "cordis_inspect_query", { platform: "host", provider: "Tool", method: "listTools" })
       },
       (options) => {
-        const receipt = JSON.parse(lastToolResultText(options))
+        const receipt = JSON.parse(lastToolResultText(options)) as { data: { tools: unknown } }
         expect(receipt.data.tools).toEqual(
           expect.arrayContaining([
             expect.objectContaining({ name: "cordis_inspect_list" }),

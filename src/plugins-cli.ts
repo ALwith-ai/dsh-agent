@@ -38,7 +38,7 @@ function configurableFields(id: string): PluginConfigField[] {
   return [...fields.values()]
 }
 
-function parseConfigPatch(id: string, raw: string): Record<string, unknown | null> {
+function parseConfigPatch(id: string, raw: string): Record<string, unknown> {
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
@@ -61,7 +61,7 @@ function parseConfigPatch(id: string, raw: string): Record<string, unknown | nul
       throw new Error(`plugin "${id}" field "${key}" must be an absolute URL`)
     }
   }
-  return parsed as Record<string, unknown | null>
+  return parsed as Record<string, unknown>
 }
 
 interface CliFlags {
@@ -75,7 +75,7 @@ function parseFlags(argv: string[]): CliFlags {
   let file = defaultPluginsFile()
   const positional: string[] = []
   for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index]!
+    const argument = argv[index]
     if (argument === "--preset") {
       const value = argv[index + 1]
       if (value === undefined) throw new Error("--preset requires a value")
@@ -124,7 +124,7 @@ function assertValidAcrossPresets(overrides: ReturnType<typeof loadPluginOverrid
   }
 }
 
-export async function runPluginsCli(argv: string[]): Promise<void> {
+export function runPluginsCli(argv: string[]): void {
   const { preset, file, positional } = parseFlags(argv)
   const [command, ...rest] = positional
   if (command === "list") {
@@ -140,7 +140,7 @@ export async function runPluginsCli(argv: string[]): Promise<void> {
     const disabled = new Set(overrides.disabled ?? [])
     if (state === "disabled") disabled.add(id)
     else disabled.delete(id)
-    const next = { ...overrides, disabled: [...disabled].sort() }
+    const next = { ...overrides, disabled: [...disabled].toSorted() }
     // Validate before touching disk: the file must never hold a state compose would refuse.
     assertValidAcrossPresets(next)
     savePluginOverrides(file, next)

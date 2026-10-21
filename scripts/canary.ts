@@ -27,7 +27,7 @@ await Promise.all(
     }
     // A dist-tag can lag behind what we already pin (cordis `next` sat below the pinned stable); never move backwards.
     const section = pins.get(name) as Record<string, string>
-    if (Bun.semver.order(version, section[name] as string) <= 0) return
+    if (Bun.semver.order(version, section[name]) <= 0) return
     moved.push(`${name} ${section[name]} -> ${version}`)
     section[name] = version
   })
@@ -36,5 +36,5 @@ writeFileSync("package.json", `${JSON.stringify(manifest, null, 2)}\n`)
 console.log(
   `dist-tag ${tag}: ${moved.length} moved, ${names.length - moved.length - missing.length} unchanged, ${missing.length} without the tag`
 )
-for (const line of moved.sort()) console.log(`  ${line}`)
-if (missing.length > 0) console.log(`  kept (no ${tag} tag): ${missing.sort().join(", ")}`)
+for (const line of moved.toSorted()) console.log(`  ${line}`)
+if (missing.length > 0) console.log(`  kept (no ${tag} tag): ${missing.toSorted().join(", ")}`)

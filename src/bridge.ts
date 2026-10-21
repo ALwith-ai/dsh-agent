@@ -135,17 +135,17 @@ interface SessionRecord {
 
 /** Brand a string as a v2 MessageId (the schema type is a branded string). */
 function MessageId(id: string): MessageId {
-  return id as MessageId
+  return id
 }
 
 /** Brand a string as a v2 ToolCallId. */
 function ToolCallId(id: string): ToolCallId {
-  return id as ToolCallId
+  return id
 }
 
 /** Brand a string as a v2 PlanId. */
 function PlanId(id: string): PlanId {
-  return id as PlanId
+  return id
 }
 
 /** Parse tool-call arguments for rawInput; malformed JSON stays a string rather than crashing the stream. */
@@ -286,8 +286,8 @@ export function apply(ctx: Context, config: AcpConfig): void {
       }
       title = title
         .trim()
-        .replace(/\s+/g, " ")
-        .replace(/^["'“”‘’「『]+|["'“”‘’」』.。!?]+$/g, "")
+        .replaceAll(/\s+/g, " ")
+        .replaceAll(/^["'“”‘’「『]+|["'“”‘’」』.。!?]+$/g, "")
         .slice(0, 60)
       if (title.length === 0) return
       // The session may have closed while the title was generating.
@@ -544,7 +544,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
   const attemptMessageIds = new Map<string, MessageId>()
   ctx.on("agent/assistant-stream", ({ agent, frame }) => {
     const record = sessions.get(agent.session.header.id)
-    if (record === undefined || record.agent !== agent) return
+    if (record?.agent !== agent) return
     {
       if (frame.type === "start") {
         attemptMessageIds.set(frame.attemptId, MessageId(`${agent.session.id}/${frame.turn}/${frame.step}`))
@@ -583,7 +583,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
   })
   ctx.on("session/event", (session, event: SessionEvent) => {
     const record = sessions.get(session.header.id)
-    if (record === undefined || record.agent.session !== session) return
+    if (record?.agent.session !== session) return
     try {
       if (event.type === "user/message") {
         const pending = record.pendingPrompts.get(event.data.id)
@@ -661,7 +661,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
   ctx.on("agent/inbox/claimed", ({ agent, message, turn }) => {
     const record = ownedRecord(agent)
     const inflight = record?.inflight
-    if (inflight !== undefined && inflight.messageId === message.id) inflight.turn = turn
+    if (inflight?.messageId === message.id) inflight.turn = turn
   })
 
   ctx.on("agent/inbox/discarded", ({ agent, message }) => {
@@ -795,7 +795,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
       const headers = (await persistence.list()).map((snapshot) => snapshot.header)
       const sessions = headers
         .filter((header) => params.cwd === undefined || params.cwd === null || header.cwd === params.cwd)
-        .sort((a, b) => b.createdAt - a.createdAt)
+        .toSorted((a, b) => b.createdAt - a.createdAt)
         .map((header) => {
           // Every bridge session is created with meta.cwd; a header without one is a
           // persistence anomaly, not a session the host could resume.
@@ -924,7 +924,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
       const firstPrompt = !record.titled
       if (firstPrompt) {
         record.titled = true
-        const title = text.trim().replace(/\s+/g, " ").slice(0, 60)
+        const title = text.trim().replaceAll(/\s+/g, " ").slice(0, 60)
         notify({
           sessionId: record.agent.session.id,
           update: { sessionUpdate: "session_info_update", title }
@@ -1015,7 +1015,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
     .onNotification("session/cancel", (context) => {
       const params: CancelSessionNotification = context.params
       const record = sessions.get(SessionId(params.sessionId))
-      if (record === undefined || record.inflight === undefined) return
+      if (record?.inflight === undefined) return
       record.inflight.cancelled = true
       record.agent.cancel({ kind: "user" })
     })
@@ -1117,7 +1117,7 @@ export function compactionUpdates(event: SessionEvent): UpdateSessionNotificatio
 
 /** Brand a string as a v2 CompactionId. */
 function CompactionId(id: string): CompactionId {
-  return id as CompactionId
+  return id
 }
 
 function agentOptions(config: AcpConfig): { provider?: string; model?: string } {

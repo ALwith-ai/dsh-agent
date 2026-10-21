@@ -142,7 +142,7 @@ export function loadPresetPackage(dir: string): PresetPackage {
       module: spec.module,
       ...(spec.description === undefined ? {} : { description: spec.description }),
       ...(spec.config === undefined ? {} : { config: spec.config as Record<string, unknown> }),
-      ...(spec.requires === undefined ? {} : { requires: spec.requires as string[] })
+      ...(spec.requires === undefined ? {} : { requires: spec.requires })
     }
   })
   if (
@@ -160,7 +160,7 @@ export function loadPresetPackage(dir: string): PresetPackage {
       ...(manifest.personaPrefix === undefined ? {} : { personaPrefix: manifest.personaPrefix }),
       ...(skillsDir === undefined ? {} : { skillsDir }),
       plugins,
-      ...(manifest.disabled === undefined ? {} : { disabled: manifest.disabled as string[] })
+      ...(manifest.disabled === undefined ? {} : { disabled: manifest.disabled })
     }
   }
 }

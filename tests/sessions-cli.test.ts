@@ -11,10 +11,10 @@ import { makeHarness, textResponse, untilFrame } from "./harness.ts"
 function captureStdout(): { lines: string[]; restore: () => void } {
   const lines: string[] = []
   const original = process.stdout.write.bind(process.stdout)
-  process.stdout.write = ((chunk: string | Uint8Array) => {
+  process.stdout.write = (chunk: string | Uint8Array) => {
     lines.push(chunk.toString())
     return true
-  }) as typeof process.stdout.write
+  }
   return {
     lines,
     restore: () => {

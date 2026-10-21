@@ -65,10 +65,10 @@ describe("anchored preset", () => {
     const second = adapter.requests.at(1) as Request
 
     // Phase 1: exactly the Minimal two tools, and the capped output budget.
-    expect((first.tools ?? []).map((tool) => tool.name).sort()).toEqual(["bash", "str_replace_editor"])
+    expect((first.tools ?? []).map((tool) => tool.name).toSorted()).toEqual(["bash", "str_replace_editor"])
     expect(first.maxTokens).toBe(1024)
     // Promotion (tool-less first response responded): the full native catalog, no cap solder.
-    expect((second.tools ?? []).map((tool) => tool.name).sort()).toEqual([
+    expect((second.tools ?? []).map((tool) => tool.name).toSorted()).toEqual([
       "bash",
       "edit",
       "glob",
