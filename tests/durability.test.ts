@@ -36,7 +36,10 @@ test("cancel waits for durable convergence and an empty concurrent prompt cannot
         settled = true
       })
     await started.promise
-    await h.agent.request("session/prompt", { sessionId, prompt: [] })
+    await expect(h.agent.request("session/prompt", { sessionId, prompt: [] })).rejects.toMatchObject({
+      code: -32602
+    })
+    await h.agent.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "   " }] })
     expect(h.states().some((state) => state.state === "idle")).toBe(false)
     await h.agent.notify("session/cancel", { sessionId })
     await checkpoint.promise

@@ -7,7 +7,7 @@ import { join } from "node:path"
 import { makeHarness, textResponse, untilFrame } from "./harness.ts"
 
 describe("dsh-agent bridge", () => {
-  test("unsupported prompt content is rejected without contacting the model", async () => {
+  test("unsupported content and empty prompt arrays are rejected without contacting the model", async () => {
     const h = await makeHarness([])
     try {
       await h.initialize()
@@ -21,7 +21,9 @@ describe("dsh-agent bridge", () => {
           code: -32602
         })
       }
-      await h.agent.request("session/prompt", { sessionId, prompt: [] })
+      await expect(h.agent.request("session/prompt", { sessionId, prompt: [] })).rejects.toMatchObject({
+        code: -32602
+      })
       expect(h.adapter.requests).toHaveLength(0)
     } finally {
       await h.dispose()
@@ -127,7 +129,7 @@ describe("dsh-agent bridge", () => {
     await h.dispose()
   })
 
-  test("empty prompt is not an error: announced by an idle(end_turn) frame, then resolves", async () => {
+  test("whitespace-only text is not an error: announced by an idle(end_turn) frame, then resolves", async () => {
     const h = await makeHarness([])
     await h.initialize()
     const { sessionId } = await h.agent.request("session/new", { cwd: "/tmp" })
