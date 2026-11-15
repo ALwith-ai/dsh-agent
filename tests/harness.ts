@@ -23,8 +23,11 @@ export type ScriptEntry = StreamChunk[] | ((options: GenerateOptions) => StreamC
 export class MockAdapter extends LlmAdapter {
   readonly requests: GenerateOptions[] = []
 
-  constructor(private readonly script: ScriptEntry[]) {
+  private readonly script: ScriptEntry[]
+
+  constructor(script: ScriptEntry[]) {
     super()
+    this.script = script
   }
 
   override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {

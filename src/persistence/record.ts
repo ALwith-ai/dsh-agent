@@ -460,7 +460,7 @@ class Reconstruction {
   /** Tool calls without a result yet; an open trailing turn with none pending is complete. */
   private pendingCalls = 0
 
-  constructor(private readonly recordId: SessionId) {}
+  constructor(_recordId: SessionId) {}
 
   private push(event: NewEvent): void {
     this.events.push({ ...event, seq: SessionSeq(this.events.length) })

@@ -24,7 +24,7 @@
   "scripts": {
     "ts7-lint": "ts7-lint",
     "test": "bun test",
-    "typecheck": "bunx tsc --noEmit"
+    "typecheck": "bun check --no-script"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "2.2.0",
@@ -123,8 +123,8 @@
     "@deepseek-ai/dsh-agent-loop-testkit": "0.2.1-rc.5",
     "@deepseek-ai/dsh-llm-replay": "0.2.1-rc.5",
     "@nyssance/ts7-lint": "^0.1.3",
-    "@types/bun": "^1.4.4",
-    "typescript": "7.0.2"
+    "@nyssance/tsconfig": "^0.1.0",
+    "@types/bun": "^1.4.4"
   },
   "trustedDependencies": [
     "@deepseek-ai/dsh-subprocess-local",

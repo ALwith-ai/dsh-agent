@@ -33,8 +33,11 @@ import { type CapturedUpdate, textResponse, untilFrame } from "./harness.ts"
 class MockAdapter extends LlmAdapter {
   readonly requests: GenerateOptions[] = []
 
-  constructor(private readonly script: StreamChunk[][]) {
+  private readonly script: StreamChunk[][]
+
+  constructor(script: StreamChunk[][]) {
     super()
+    this.script = script
   }
 
   override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {

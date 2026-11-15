@@ -160,13 +160,19 @@ class AlwithSessionHandle implements SessionHandle {
   private drainPaused = false
   private draining: Promise<void> | undefined
 
-  constructor(
-    private readonly storage: Storage,
-    readonly id: SessionId,
-    readonly header: SessionHeader,
-    readonly access: SessionAccess,
-    readonly state: HandleState
-  ) {}
+  private readonly storage: Storage
+  readonly id: SessionId
+  readonly header: SessionHeader
+  readonly access: SessionAccess
+  readonly state: HandleState
+
+  constructor(storage: Storage, id: SessionId, header: SessionHeader, access: SessionAccess, state: HandleState) {
+    this.storage = storage
+    this.id = id
+    this.header = header
+    this.access = access
+    this.state = state
+  }
 
   get inheritedEventCount(): SessionLogOffset {
     return this.state.inheritedEventCount
@@ -347,11 +353,11 @@ export default class AlwithSessionPersistence extends SessionPersistence impleme
   private readonly pending = new Map<SessionId, PendingSession>()
   private counter = 0
 
-  constructor(
-    ctx: Context,
-    public config: Config
-  ) {
+  public config: Config
+
+  constructor(ctx: Context, config: Config) {
     super(ctx)
+    this.config = config
     this.projectsDir = resolve(config.projectsDir)
     this.providerId = config.providerId ?? "deepseek"
     this.writer = { name: config.writerName ?? "@alwith-ai/dsh-agent", version: config.writerVersion ?? "0.0.0" }

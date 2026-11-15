@@ -1,10 +1,4 @@
 {
-  "compilerOptions": {
-    "module": "esnext",
-    "allowImportingTsExtensions": true,
-    "noEmit": true,
-    "skipLibCheck": true,
-    "types": ["bun"]
-  },
+  "extends": "@nyssance/tsconfig/bun.json",
   "include": ["src", "tests"]
 }
