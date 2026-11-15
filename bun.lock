@@ -5,10 +5,10 @@
     "": {
       "name": "@alwith/dsh-acp",
       "dependencies": {
-        "@agentclientprotocol/sdk": "2.2.0",
-        "@deepseek-ai/cordis": "4.0.5",
-        "@deepseek-ai/cordis-plugin-group": "1.0.5",
-        "@deepseek-ai/cordis-plugin-include": "1.0.10",
+        "@agentclientprotocol/sdk": "^2.7.0",
+        "@deepseek-ai/cordis": "^4.1.0",
+        "@deepseek-ai/cordis-plugin-group": "^1.1.0",
+        "@deepseek-ai/cordis-plugin-include": "^1.1.0",
         "@deepseek-ai/dsh-agent": "0.2.1-rc.5",
         "@deepseek-ai/dsh-agent-loop": "0.2.1-rc.5",
         "@deepseek-ai/dsh-anonymous-user-id": "0.2.1-rc.5",
@@ -101,7 +101,7 @@
         "@deepseek-ai/dsh-agent-loop-testkit": "0.2.1-rc.5",
         "@deepseek-ai/dsh-llm-replay": "0.2.1-rc.5",
         "@nyssance/ts7-lint": "^0.1.3",
-        "@nyssance/tsconfig": "^0.1.0",
+        "@nyssance/tsconfig": "^0.1.2",
         "@types/bun": "^1.4.4",
       },
     },
@@ -113,7 +113,7 @@
     "koffi",
   ],
   "packages": {
-    "@agentclientprotocol/sdk": ["@agentclientprotocol/sdk@2.2.0", "", { "peerDependencies": { "@modelcontextprotocol/server": "^2.4.0", "zod": "^3.25.76 || ^4.0.0" }, "optionalPeers": ["@modelcontextprotocol/server"] }, "sha512-o1+eDQVb05yzPY+5v54awHyONU1oeLsbLVavkwrMQaZDuJDh/38pQiXJS4ix4d6QA3Y4bU0lHFRjwg99KKKSaQ=="],
+    "@agentclientprotocol/sdk": ["@agentclientprotocol/sdk@2.7.0", "", { "peerDependencies": { "@modelcontextprotocol/server": "^2.4.0", "zod": "^3.25.76 || ^4.0.0" }, "optionalPeers": ["@modelcontextprotocol/server"] }, "sha512-oXdQq0plWv3iOg01zJghNZRSuyWeMYxOgWIaSdwg1BZe2ZAC9LRhNDi023lNYxXq1zVIpQjIp8P6AfsxpvxF6g=="],
 
     "@anthropic-ai/sdk": ["@anthropic-ai/sdk@0.129.0", "", { "dependencies": { "json-schema-to-ts": "^3.1.1", "standardwebhooks": "^1.0.0" }, "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["zod"], "bin": { "anthropic-ai-sdk": "bin/cli" } }, "sha512-MH7LB20kNpGLUpPTe2OG5XvL/KhX8HUO9XyBaFjgFk6TLS4Xjt0VPIuMKywe7POKKPslX+QxSlVok9e+8kG5Nw=="],
 
@@ -157,15 +157,15 @@
 
     "@babel/runtime": ["@babel/runtime@7.29.14", "", {}, "sha512-Y5tqevQaUAZhhj82BpYMNC1ssvLQTVAfwKdm8iy8qwmhvC2/CpcAu8OC+QEtjM7pMk7knx83u1Qj8gzkicyelw=="],
 
-    "@deepseek-ai/cordis": ["@deepseek-ai/cordis@4.0.5", "", { "dependencies": { "@deepseek-ai/cosmokit": "~1.8.6", "@standard-schema/spec": "^1.1.0" }, "peerDependencies": { "@deepseek-ai/cordis-plugin-include": "~1.0.10", "@deepseek-ai/cordis-plugin-loader": "~1.0.6" }, "optionalPeers": ["@deepseek-ai/cordis-plugin-include", "@deepseek-ai/cordis-plugin-loader"], "bin": { "cordis": "bin.js" } }, "sha512-Sktq5axy0owk9PdnivBRNOJjHEVEibCt0+TDDZcv0+UH2KS1M910fX4kn5y45YFsrpZIi1mJf/1s5VzywMUnyg=="],
+    "@deepseek-ai/cordis": ["@deepseek-ai/cordis@4.1.0", "", { "dependencies": { "@deepseek-ai/cosmokit": "~1.9.0", "@standard-schema/spec": "^1.1.0" }, "peerDependencies": { "@deepseek-ai/cordis-plugin-include": "~1.1.0", "@deepseek-ai/cordis-plugin-loader": "~1.1.0" }, "optionalPeers": ["@deepseek-ai/cordis-plugin-include", "@deepseek-ai/cordis-plugin-loader"], "bin": { "cordis": "bin.js" } }, "sha512-CJrjNyBkKn1SfvBQUcgFYKFnLjS+uKrhdMsbHU60xabvi12d+xQ+IQSNlME5Z+B+4Zi6n4BDknKY94tEPeo47w=="],
 
-    "@deepseek-ai/cordis-plugin-group": ["@deepseek-ai/cordis-plugin-group@1.0.5", "", { "peerDependencies": { "@deepseek-ai/cordis": "~4.0.5", "@deepseek-ai/cordis-plugin-loader": "~1.0.6" } }, "sha512-PGYqImAydmAjmy5fl1Js6qDmk0Ivt1fipa3fOj1KyyRd0tZ9i61a2rhzHc7LaSeBb/spJ1LF4k3Pcppaq+w8fw=="],
+    "@deepseek-ai/cordis-plugin-group": ["@deepseek-ai/cordis-plugin-group@1.1.0", "", { "peerDependencies": { "@deepseek-ai/cordis": "~4.1.0", "@deepseek-ai/cordis-plugin-loader": "~1.1.0" } }, "sha512-VVGcw29YWG83D9YqYsivyfIkcPdd+tgrc/Lj4GkxS5n0i6++jpY6nNSKM/6JU7F7phUT/Q5Y9o30rcYbE1pW4w=="],
 
-    "@deepseek-ai/cordis-plugin-include": ["@deepseek-ai/cordis-plugin-include@1.0.10", "", { "dependencies": { "@deepseek-ai/cosmokit": "~1.8.6", "js-yaml": "^4.1.0" }, "peerDependencies": { "@deepseek-ai/cordis": "~4.0.5", "@deepseek-ai/cordis-plugin-loader": "~1.0.6" } }, "sha512-Rdo6Uqf9WfDbfN3dsYkYj/EW+SGuWCSfthz1PoOtZYUr6qrRpqD7ND4Gj3nUYj8XhSGIo8E3xpsck6J5nM5BYQ=="],
+    "@deepseek-ai/cordis-plugin-include": ["@deepseek-ai/cordis-plugin-include@1.1.0", "", { "dependencies": { "@deepseek-ai/cosmokit": "~1.9.0", "js-yaml": "^4.1.0" }, "peerDependencies": { "@deepseek-ai/cordis": "~4.1.0", "@deepseek-ai/cordis-plugin-loader": "~1.1.0" } }, "sha512-tD5JTHTDU1j1bkjgTK150UUSzypBSVhHoEl7/vgpYiDt7Czg43++IFUKaRlwXHMl5WC51S8T2V7p2IHpJ1Ny0A=="],
 
     "@deepseek-ai/cordis-plugin-loader": ["@deepseek-ai/cordis-plugin-loader@1.0.6", "", { "dependencies": { "@deepseek-ai/cosmokit": "~1.8.6", "@deepseek-ai/schemastery": "~3.18.5" }, "peerDependencies": { "@deepseek-ai/cordis": "~4.0.5", "node-addon-require-builtin": "^0.1.9" }, "optionalPeers": ["node-addon-require-builtin"] }, "sha512-fr011A782oEjkJXCY4pePt2qaPpkGvem7Rmst6Rhwgg6icgwI4eN9QBRb6S/q9XOYGVQUdvL0wXUWyNxO8WipA=="],
 
-    "@deepseek-ai/cosmokit": ["@deepseek-ai/cosmokit@1.8.6", "", {}, "sha512-ZSD/fN52L498LBIOYwjIOlaLv5veY6ZEwI2yzvZUKQtctn0QAPqu8tKdJ+OF5+Tv6NBq1U+wJWH+QI6OGy5EvQ=="],
+    "@deepseek-ai/cosmokit": ["@deepseek-ai/cosmokit@1.9.0", "", {}, "sha512-5O1S53mZiJyZYcvxxD0Qv1EY7qFPSxbGyD8CbVK6gw7W9FvcXZj2YIX1ZkOqyQQ3Xt2rFkZDHJv0+V3Zmmp8CA=="],
 
     "@deepseek-ai/dsh-agent": ["@deepseek-ai/dsh-agent@0.2.1-rc.5", "", { "peerDependencies": { "@deepseek-ai/cordis": "~4.0.5", "@deepseek-ai/dsh-llm": "0.2.1-rc.5", "@deepseek-ai/dsh-scope": "0.2.1-rc.5", "@deepseek-ai/dsh-session": "0.2.1-rc.5", "@deepseek-ai/dsh-session-projection": "0.2.1-rc.5", "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.5", "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.5", "@deepseek-ai/dsh-util-values": "0.2.1-rc.5", "@deepseek-ai/dsh-workspace": "0.2.1-rc.5" }, "optionalPeers": ["@deepseek-ai/dsh-workspace"] }, "sha512-mHNbxag0rZVNHaXZvr4OhiveaTTGMNPEpzO4nS8ohOQiQL0MWqA7brwtjBbaAlB3aMZ13tbHGHINpFlXdu8J3Q=="],
 
@@ -431,7 +431,7 @@
 
     "@nyssance/ts7-lint": ["@nyssance/ts7-lint@0.1.3", "", { "bin": { "ts7-lint": "src/index.ts" } }, "sha512-i6lTThgMw6JoCgDB1clmlNMMgOJSj2nU62qZjZn6KhG55YYmNwkkZw889Am9YuXAnXNcJDi8qZKC23HpV+lx8Q=="],
 
-    "@nyssance/tsconfig": ["@nyssance/tsconfig@0.1.0", "", {}, "sha512-tLXTdPG1MehZI0kc3ZA37KYLp9az9ktUI/SKMjO+DHdqlgzsY2yHcSIG0yE8c2nfjqD0bb8ulOLqJkun1IKxTQ=="],
+    "@nyssance/tsconfig": ["@nyssance/tsconfig@0.1.2", "", {}, "sha512-BQ0PzHmJEQJQ0oQ+2sVEAsxzz5LEcq3kPKVcXMg1JJxt219C24wQab6z9FuC/JJzyM6XIQQpYLNU3UhvNL3hfA=="],
 
     "@protobufjs/aspromise": ["@protobufjs/aspromise@1.1.2", "", {}, "sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ=="],
 
@@ -656,6 +656,14 @@
     "@aws-sdk/credential-provider-sso/@aws-sdk/token-providers": ["@aws-sdk/token-providers@3.1166.0", "", { "dependencies": { "@aws-sdk/core": "^3.981.0", "@aws-sdk/nested-clients": "^3.998.3", "@aws-sdk/types": "^3.975.1", "@smithy/core": "^3.40.0", "@smithy/types": "^4.20.0", "tslib": "^2.6.2" } }, "sha512-ngJ8mxXqtQ9mnp7QV6TWKJCxkpjVfPWxKQSc2FYhCyCfOVFIGdFv7P+/RqVffFrJAorwBPpktnv32gNlcEgF4g=="],
 
     "@aws-sdk/nested-clients/@smithy/node-http-handler": ["@smithy/node-http-handler@4.14.2", "", { "dependencies": { "@smithy/core": "^3.39.0", "@smithy/types": "^4.20.0", "tslib": "^2.6.2" } }, "sha512-i1uORV1v3qBqP43ayRKzIdm1q5x14tf8N4Dd06/QUX1Szm6VxHMrTsu20X5E63UFsaNZCRjI4SXG0jDmqYa+3w=="],
+
+    "@deepseek-ai/cordis-plugin-loader/@deepseek-ai/cosmokit": ["@deepseek-ai/cosmokit@1.8.6", "", {}, "sha512-ZSD/fN52L498LBIOYwjIOlaLv5veY6ZEwI2yzvZUKQtctn0QAPqu8tKdJ+OF5+Tv6NBq1U+wJWH+QI6OGy5EvQ=="],
+
+    "@deepseek-ai/dsh-llm-deepseek/@deepseek-ai/cosmokit": ["@deepseek-ai/cosmokit@1.8.6", "", {}, "sha512-ZSD/fN52L498LBIOYwjIOlaLv5veY6ZEwI2yzvZUKQtctn0QAPqu8tKdJ+OF5+Tv6NBq1U+wJWH+QI6OGy5EvQ=="],
+
+    "@deepseek-ai/dsh-settings/@deepseek-ai/cosmokit": ["@deepseek-ai/cosmokit@1.8.6", "", {}, "sha512-ZSD/fN52L498LBIOYwjIOlaLv5veY6ZEwI2yzvZUKQtctn0QAPqu8tKdJ+OF5+Tv6NBq1U+wJWH+QI6OGy5EvQ=="],
+
+    "@deepseek-ai/schemastery/@deepseek-ai/cosmokit": ["@deepseek-ai/cosmokit@1.8.6", "", {}, "sha512-ZSD/fN52L498LBIOYwjIOlaLv5veY6ZEwI2yzvZUKQtctn0QAPqu8tKdJ+OF5+Tv6NBq1U+wJWH+QI6OGy5EvQ=="],
 
     "gaxios/https-proxy-agent": ["https-proxy-agent@7.0.6", "", { "dependencies": { "agent-base": "^7.1.2", "debug": "4" } }, "sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw=="],
 
