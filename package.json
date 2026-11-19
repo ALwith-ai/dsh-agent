@@ -1,7 +1,7 @@
 {
   "name": "@alwith-ai/dsh-agent",
   "version": "0.4.5",
-  "packageManager": "bun@1.4.4",
+  "packageManager": "bun@1.4.5",
   "description": "ACP v2 agent built on DeepSeek Harness: fixed plugin compositions (standard / minimal / anchored / code / cordis), streaming turns with direct state reporting, permissions, resume with replay, multi-provider credentials and subscription login",
   "license": "MIT",
   "repository": {
@@ -23,7 +23,7 @@
   "type": "module",
   "scripts": {
     "ts7-lint": "ts7-lint",
-    "test": "bun test",
+    "test": "bun test --parallel",
     "typecheck": "bun check --no-script"
   },
   "dependencies": {
