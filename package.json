@@ -124,7 +124,7 @@
     "@deepseek-ai/dsh-llm-replay": "0.2.1-rc.5",
     "@nyssance/ts7-lint": "^0.1.3",
     "@nyssance/tsconfig": "^0.1.2",
-    "@types/bun": "^1.4.4"
+    "@types/bun": "^1.4.5"
   },
   "trustedDependencies": [
     "@deepseek-ai/dsh-subprocess-local",
